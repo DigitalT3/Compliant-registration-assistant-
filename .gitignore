@@ -16,3 +16,12 @@ __pycache__/
 venv/
 dist/
 build/
+
+# PoC SQLite databases
+*.sqlite3
+*.sqlite3-journal
+
+# Test artifacts
+.pytest_cache/
+test-results/
+playwright-report/
