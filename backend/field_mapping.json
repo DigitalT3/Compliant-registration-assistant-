@@ -1,0 +1,19 @@
+{
+  "label": "PROVISIONAL one-to-one mapping from PoC fields to target complaint-system fields. NOT validated against Salesforce or any production system. Target names are placeholders pending the complaint-system owner's field list.",
+  "validated": false,
+  "fields": [
+    {"poc_field": "customer_id", "target_field": "PROVISIONAL_Account", "required": false, "note": "May be blank when no match is found."},
+    {"poc_field": "site_id", "target_field": "PROVISIONAL_Site", "required": false, "note": ""},
+    {"poc_field": "contract_id", "target_field": "PROVISIONAL_Contract", "required": false, "note": ""},
+    {"poc_field": "order_id", "target_field": "PROVISIONAL_Order", "required": false, "note": ""},
+    {"poc_field": "channel", "target_field": "PROVISIONAL_Channel", "required": true, "note": "Mandatory assumption unconfirmed."},
+    {"poc_field": "registration_date", "target_field": "PROVISIONAL_RegistrationDate", "required": true, "note": ""},
+    {"poc_field": "registering_user", "target_field": "PROVISIONAL_RegisteredBy", "required": true, "note": "Demo user in the PoC."},
+    {"poc_field": "original_text", "target_field": "PROVISIONAL_Description", "required": true, "note": "Preserved exactly as entered."},
+    {"poc_field": "summary_json", "target_field": "PROVISIONAL_StructuredSummary", "required": false, "note": ""},
+    {"poc_field": "complaint_type", "target_field": "PROVISIONAL_Type", "required": true, "note": ""},
+    {"poc_field": "root_cause", "target_field": "PROVISIONAL_RootCause", "required": true, "note": "Provisional taxonomy."},
+    {"poc_field": "other_reason", "target_field": "PROVISIONAL_OtherReason", "required": false, "note": "Required when root_cause is other."},
+    {"poc_field": "repeat_detected", "target_field": "PROVISIONAL_RepeatFlag", "required": false, "note": "Deterministic rule result."}
+  ]
+}

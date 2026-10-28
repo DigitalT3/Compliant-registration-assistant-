@@ -1,0 +1,109 @@
+"""Health and configuration endpoints."""
+import copy
+import json
+
+from fastapi import APIRouter, Depends
+from pydantic import BaseModel, Field
+
+from .. import db
+from ..auth import require
+from ..dbutil import audit, connection
+from ..errors import ApiError
+from ..settings import ai_settings, get_config
+
+router = APIRouter()
+
+
+class RepeatRuleUpdate(BaseModel):
+    """Editable repeat-rule parameters (provisional business rule)."""
+    enabled: bool = True
+    lookback_days: int = Field(..., ge=0, le=3650, description="Inclusive lookback window in days")
+    match_keys: list[str] = Field(..., description="Subset of customer_id, site_id")
+    cause_mode: str = Field(..., description="level1, level2 or none")
+    eligible_statuses: list[str] = Field(..., min_length=1)
+    missing_values: str = Field("no_match", description="no_match or ignore")
+
+
+class DefaultsUpdate(BaseModel):
+    """Channel defaults per complaint type."""
+    defaults: dict[str, dict[str, str]]
+
+
+def _public(cfg: dict) -> dict:
+    ai = ai_settings()
+    return {"app": cfg["app"], "version": cfg["version"], "default_language": cfg["default_language"],
+            "taxonomy_version": cfg["taxonomy_version"], "types": cfg["types"], "required_fields": cfg["required_fields"],
+            "classification": cfg["classification"], "summary": cfg["summary"], "repeat_rule": cfg["repeat_rule"],
+            "defaults": cfg["defaults"], "baseline": cfg["baseline"], "provisional_meta": cfg["provisional_meta"],
+            "roles": cfg["roles"], "demo_users": cfg["demo_users"], "synthetic_only": True,
+            "ai": {"provider": ai["provider"], "model": ai["model"], "mock": ai["provider"] != "live"}}
+
+
+@router.get("/health", tags=["health"], summary="Liveness and mode information")
+def health():
+    """Return service status and mode flags (synthetic data, AI provider)."""
+    return {"status": "ok", "poc": True, "synthetic_only": True, "ai_provider": ai_settings()["provider"],
+            "ai_mock": ai_settings()["provider"] != "live", "clock_mode": "fixed" if db.reference_now() == db.seed_anchor() else "real"}
+
+
+@router.get("/api/config", tags=["config"], summary="Effective non-secret configuration")
+def get_cfg():
+    """Return the effective configuration (no secrets)."""
+    return _public(get_config())
+
+
+@router.get("/api/config/defaults", tags=["config"], summary="Configured field defaults")
+def get_defaults():
+    """Return channel defaults per complaint type."""
+    c = get_config()
+    return {"defaults": c["defaults"], "meta": c["provisional_meta"]["defaults"]}
+
+
+@router.get("/api/config/root-causes", tags=["config"], summary="Active taxonomy")
+def get_causes():
+    """Return the active (provisional) taxonomy and complaint types."""
+    c = get_config()
+    return {"taxonomy_version": c["taxonomy_version"], "types": c["types"], "root_causes": c["root_causes"],
+            "meta": c["provisional_meta"]["taxonomy"]}
+
+
+@router.get("/api/config/repeat-rule", tags=["config"], summary="Active repeat rule")
+def get_rule():
+    """Return the active repeat rule with provisional metadata."""
+    c = get_config()
+    return {"repeat_rule": c["repeat_rule"], "meta": {k: v for k, v in c["provisional_meta"].items() if k.startswith("repeat_rule")}}
+
+
+def _override(conn, kind: str, content: dict, user: dict, before: dict) -> dict:
+    n = conn.execute("SELECT count(*) FROM config_versions WHERE version LIKE 'override-%'").fetchone()[0] + 1
+    if "version" in content:
+        content["version"] = f"{before['version'].split('-edit-')[0]}-edit-{n}"
+    conn.execute("UPDATE config_versions SET active=0 WHERE kind=? AND version LIKE 'override-%'", (kind,))
+    conn.execute("INSERT INTO config_versions(kind,version,content,activated_at,active) VALUES(?,?,?,?,1)",
+                 (kind, f"override-{n}", json.dumps(content, sort_keys=True), db.now()))
+    audit(conn, user["id"], "configuration_changed", {"kind": kind, "before": before, "after": content})
+    conn.commit()
+    return content
+
+
+@router.put("/api/config/repeat-rule", tags=["config"], summary="Update repeat rule (configure permission)")
+def put_rule(body: RepeatRuleUpdate, user: dict = Depends(require("configure"))):
+    """Replace the repeat rule; creates a new rule version and an audit entry."""
+    if not set(body.match_keys) <= {"customer_id", "site_id"}:
+        raise ApiError(422, "invalid_match_keys", "match_keys must be a subset of customer_id, site_id.")
+    if body.cause_mode not in ("level1", "level2", "none") or body.missing_values not in ("no_match", "ignore"):
+        raise ApiError(422, "invalid_rule", "Invalid cause_mode or missing_values.")
+    before = copy.deepcopy(get_config()["repeat_rule"])
+    new = {**before, **body.model_dump(), "last_updated": db.now()}
+    with connection() as conn:
+        return {"repeat_rule": _override(conn, "repeat_rule", new, user, before)}
+
+
+@router.put("/api/config/defaults", tags=["config"], summary="Update defaults (configure permission)")
+def put_defaults(body: DefaultsUpdate, user: dict = Depends(require("configure"))):
+    """Replace channel defaults; only known complaint types are accepted."""
+    cfg = get_config()
+    if not set(body.defaults) <= {t["id"] for t in cfg["types"]}:
+        raise ApiError(422, "invalid_type", "Unknown complaint type in defaults.")
+    with connection() as conn:
+        return {"defaults": _override(conn, "defaults", body.defaults, user, copy.deepcopy(cfg["defaults"]))}
