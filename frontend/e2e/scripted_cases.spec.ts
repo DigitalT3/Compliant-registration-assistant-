@@ -46,6 +46,7 @@ test("T01 customer number, English text, suggested cause preselected, saved", as
   await describe(page, "The container at our depot was not emptied on Tuesday, it was missed again.", "en");
   await expect(page.getByRole("heading", { name: /Summary/ })).toBeVisible();
   await expect(page.getByRole("radio", { name: /Missed collection/ }).first()).toBeChecked();   // confirm, don't type
+  await expect(page.getByText("This cause list is a draft: 0 of 3 process owners have agreed so far.")).toBeVisible();
   await expect(page.getByLabel("Complaint type").first()).toHaveValue("service");
   await next(page);
   await expect(page.getByText("No repeat found under the current rule.")).toBeVisible();   // repeat result and Save share one screen
@@ -801,4 +802,46 @@ test("T49 a team lead sees how each person of their team registers; an admin als
   await page.getByRole("button", { name: "Dashboard" }).click();
   const all = page.locator("article", { has: page.getByRole("heading", { name: "By employee" }) });
   await expect(all.locator("th", { hasText: /^Group$/ })).toBeVisible();                           // admins see every team
+});
+
+test("T50 the process owners agree the cause list: three real accounts, the last one on the page", async ({ page, request }) => {
+  const create = async (name: string, email: string) =>
+    (await (await request.post(`${API}/api/users`, { headers: ADMIN, data: { name, email, function: null, role: "evaluator" } })).json()).temporary_password as string;
+  const ownPassword = async (email: string, temp: string) => {                                    // first sign-in: choose a password
+    const first = await (await request.post(`${API}/api/auth/login`, { data: { email, password: temp } })).json();
+    const done = await (await request.post(`${API}/api/auth/change-password`, { headers: { Authorization: `Bearer ${first.token}` }, data: { current_password: temp, new_password: "owner-password-1234" } })).json();
+    return { Authorization: `Bearer ${done.token}` };
+  };
+  const kwafie = await ownPassword("kwafie.owner@example.nl", await create("Kwafie Owner", "kwafie.owner@example.nl"));
+  const naomi = await ownPassword("naomi.owner@example.nl", await create("Naomi Owner", "naomi.owner@example.nl"));
+  const maikelTemp = await create("Maikel Owner", "maikel.owner@example.nl");
+  for (const h of [kwafie, naomi]) expect((await request.post(`${API}/api/config/root-causes/review`, { headers: h, data: { decision: "agree" } })).ok()).toBe(true);
+
+  await openSignedOut(page);                                                                     // Maikel signs in on the real sign-in screen
+  await page.getByLabel("Work e-mail address").fill("maikel.owner@example.nl");
+  await page.getByLabel("Password", { exact: true }).fill(maikelTemp);
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await page.getByLabel("Current password").fill(maikelTemp);
+  await page.getByLabel("New password", { exact: true }).fill("maikel-own-password-1");
+  await page.getByLabel("Repeat new password").fill("maikel-own-password-1");
+  await page.getByRole("button", { name: "Save password" }).click();
+  await page.getByRole("button", { name: "Root causes" }).click();
+
+  const panel = page.getByLabel("Agreement on this list");
+  await expect(panel.getByText("Draft", { exact: true })).toBeVisible();
+  await expect(panel.getByText("2 of 3 process owners have agreed to this version of the list.")).toBeVisible();
+  await expect(panel.getByText("Kwafie Owner")).toBeVisible();
+  await expect(panel.getByRole("button", { name: "Request changes" })).toBeDisabled();           // asking for changes needs a comment
+  await panel.getByRole("button", { name: "I agree with this list" }).click();
+  await expect(panel.getByText("Agreed", { exact: true })).toBeVisible();                         // three of three
+  await expect(panel.getByText(/3 of 3 process owners have agreed/)).toBeVisible();
+  await expect(panel.getByText("Maikel Owner")).toBeVisible();
+
+  await page.getByRole("button", { name: "About" }).click();                                      // the status is also on the About page
+  await expect(page.getByText(/Agreed: 3 of 3 process owners/)).toBeVisible();
+
+  await openApp(page, "demo.admin");                                                              // an administrator can read it but not agree for the owners
+  await page.getByRole("button", { name: "Root causes" }).click();
+  await expect(page.getByLabel("Agreement on this list").getByText("Only the process owners")).toBeVisible();
+  await expect(page.getByRole("button", { name: "I agree with this list" })).toHaveCount(0);
 });

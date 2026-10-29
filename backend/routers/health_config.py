@@ -9,6 +9,7 @@ from .. import db
 from ..auth import require
 from ..dbutil import audit, connection
 from ..errors import ApiError
+from ..services import taxonomy_review
 from ..settings import ai_settings, get_config, invalidate_config
 
 router = APIRouter()
@@ -49,7 +50,9 @@ def health():
 @router.get("/api/config", tags=["config"], summary="Effective non-secret configuration")
 def get_cfg():
     """Return the effective configuration (no secrets)."""
-    return _public(get_config())
+    with connection() as conn:
+        review = taxonomy_review.status(conn)
+    return {**_public(get_config()), "taxonomy_review": {k: review[k] for k in ("state", "required", "agreed")}}
 
 
 @router.get("/api/config/defaults", tags=["config"], summary="Configured field defaults")
@@ -63,8 +66,23 @@ def get_defaults():
 def get_causes():
     """Return the active (provisional) taxonomy and complaint types."""
     c = get_config()
+    with connection() as conn:
+        review = taxonomy_review.status(conn, c)
     return {"taxonomy_version": c["taxonomy_version"], "types": c["types"], "root_causes": c["root_causes"],
-            "categories": c["root_cause_categories"], "meta": c["provisional_meta"]["taxonomy"]}
+            "categories": c["root_cause_categories"], "meta": c["provisional_meta"]["taxonomy"], "review": review}
+
+
+class ReviewIn(BaseModel):
+    """A process owner's review of the cause list as it is now."""
+    decision: str = Field(..., pattern="^(agree|changes)$")
+    comment: str | None = Field(None, max_length=500)
+
+
+@router.post("/api/config/root-causes/review", tags=["config"], summary="Agree to the cause list, or ask for changes")
+def review_causes(body: ReviewIn, user: dict = Depends(require("review_taxonomy"))):
+    """Record the caller's review. Needs the ``review_taxonomy`` permission (the process owners, role evaluator)."""
+    with connection() as conn:
+        return taxonomy_review.review(conn, user, body.decision, body.comment)
 
 
 @router.get("/api/config/repeat-rule", tags=["config"], summary="Active repeat rule")

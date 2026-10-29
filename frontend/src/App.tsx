@@ -144,7 +144,7 @@ function AppShell() {
           {DATA_PAGES.includes(current as Section) && <CustomerDataPage section={current as Section} onBack={() => setPage("register")} />}
           {current === "history" && <History config={config} />}
           {current === "dashboard" && <Dashboard />}
-          {current === "rootcauses" && <RootCauses config={config} />}
+          {current === "rootcauses" && <RootCauses config={config} canReview={me.permissions.includes("review_taxonomy")} onReviewed={(review: any) => setConfig({ ...config, review })} />}
           {current === "evaluation" && <Evaluation config={config} />}
           {current === "config" && <Configuration config={config} onUpdated={setConfig} />}
           {current === "users" && <Users config={config} meId={me.id} />}
@@ -399,11 +399,45 @@ function formatRate(rate: { value: number | null; n: number } | undefined) {
   return rate?.value === null || rate?.value === undefined ? "–" : `${Math.round(rate.value * 100)}% (n=${rate.n})`;
 }
 
-function RootCauses({ config }: { config: any }) {
+function RootCauses({ config, canReview, onReviewed }: { config: any; canReview: boolean; onReviewed: (review: any) => void }) {
   const { lang, t } = useI18n();
+  const [review, setReview] = useState<any>(config.review);
+  const [comment, setComment] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => { get<any>("/api/config/root-causes").then((r) => setReview(r.review)).catch(() => undefined); }, []);
+  const send = async (decision: "agree" | "changes") => {
+    setBusy(true); setError(null);
+    try {
+      const r = await post<any>("/api/config/root-causes/review", { decision, comment: comment || null });
+      setReview(r); onReviewed(r); setComment("");
+    } catch (e) { setError(e instanceof ApiError ? e.message : String(e)); } finally { setBusy(false); }
+  };
   return (
     <section>
       <h2>{t("ref.title", { v: config.taxonomy_version })}</h2>
+      {review && (
+        <article className="card" aria-label={t("taxo.title")}>
+          <h3>{t("taxo.title")} <span className={`badge ${review.state === "agreed" ? "prov-prefilled" : review.state === "draft" ? "prov-default" : "prov-edited"}`}>{t(`taxo.state.${review.state}`)}</span></h3>
+          <p>{t("taxo.progress", { agreed: review.agreed, required: review.required })}{review.agreed_at && ` ${t("taxo.agreed_on", { date: review.agreed_at.slice(0, 10) })}`}</p>
+          {review.reviews.length === 0 ? <p className="muted">{t("taxo.none")}</p> : (
+            <ul>{review.reviews.map((r: any) => (
+              <li key={r.user_id}><b>{r.name}</b>: {t(`taxo.decision.${r.decision}`)} · {r.at.slice(0, 10)}{!r.current && <span className="muted"> {t("taxo.older")}</span>}{r.comment && <> · <i>{r.comment}</i></>}</li>
+            ))}</ul>
+          )}
+          {canReview ? (
+            <div>
+              <ErrorMessage error={error} />
+              <label htmlFor="taxo-comment">{t("taxo.comment")}</label>
+              <input id="taxo-comment" value={comment} maxLength={500} onChange={(e) => setComment(e.target.value)} />
+              <p className="inline">
+                <button disabled={busy} onClick={() => send("agree")}>{t("taxo.agree")}</button>
+                <button className="secondary" disabled={busy || !comment.trim()} onClick={() => send("changes")}>{t("taxo.changes")}</button>
+              </p>
+            </div>
+          ) : <p className="muted">{t("taxo.only_owners")}</p>}
+        </article>
+      )}
       <div className="reference-grid">
         {config.root_causes.map((cause: any) => (
           <article className="card" key={cause.id}>
@@ -577,7 +611,9 @@ function About({ config }: { config: any }) {
         <h3>{t("about.open")}</h3>
         <table><thead><tr><th>{t("about.open.item")}</th><th>{t("about.open.who")}</th></tr></thead>
           <tbody>{open.map(([key, m]) => (
-            <tr key={key}><td><b>{key}</b><br /><small>{m.description || m.note}</small></td><td>{m.owner_to_confirm || m.status}</td></tr>
+            <tr key={key}><td><b>{key}</b><br /><small>{m.description || m.note}</small>
+              {key === "taxonomy" && config?.review && <><br /><small><b>{t(`taxo.state.${config.review.state}`)}</b>: {t("taxo.progress", { agreed: config.review.agreed, required: config.review.required })}</small></>}</td>
+              <td>{m.owner_to_confirm || m.status}</td></tr>
           ))}</tbody></table>
       </article>
     </section>

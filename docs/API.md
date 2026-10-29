@@ -9,6 +9,7 @@ The API is served by FastAPI. Generated OpenAPI is available at `/openapi.json` 
 | Endpoint | Purpose |
 | --- | --- |
 | `GET /health` | PoC, synthetic-data, clock, and AI-mode status. |
+| `POST /api/config/root-causes/review` | `review_taxonomy` (the process owners, role evaluator) | `{decision: agree|changes, comment?}`; a request for changes needs a comment. Returns the status of the list. `GET /api/config/root-causes` includes `review`: `state` (`draft`, `changes_requested`, `agreed`), `agreed` of `required` (`taxonomy_review.required_agreements`, 3), each person's latest review, and the fingerprint of the list. A review counts only for the exact list it was given on: change the list and the agreement starts again. |
 | `GET /api/config`, `/defaults`, `/root-causes`, `/repeat-rule` | Effective non-secret configuration and provisional metadata. |
 | `PUT /api/config/repeat-rule`, `/defaults` | Update configuration; requires `configure`. |
 | `GET /api/customers/search?q=` | Search by customer number, order, container, or name. |

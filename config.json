@@ -326,7 +326,8 @@
     "evaluator": [
       "read",
       "analytics",
-      "evaluate"
+      "evaluate",
+      "review_taxonomy"
     ],
     "governance": [
       "read",
@@ -554,5 +555,8 @@
   "report": {
     "per_employee_min_n": 3,
     "show_employee_names": true
+  },
+  "taxonomy_review": {
+    "required_agreements": 3
   }
 }

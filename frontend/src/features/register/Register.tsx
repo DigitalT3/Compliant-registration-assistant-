@@ -556,6 +556,7 @@ export default function Register({ onViewHistory, meName, config }: { onViewHist
           {plain ? <p className="muted">{t("mode.plain_note")}</p>
             : <button className="secondary" disabled={busy || !s.text.trim()} onClick={() => run(analyse)}>{t("classify")}</button>}
           <h3>{t("classify.all")}</h3>
+          {config?.review && config.review.state !== "agreed" && <p className="muted">{t("taxo.list_draft", { agreed: config.review.agreed, required: config.review.required })}</p>}
           <label htmlFor="cf">{t("classify.search")}</label>
           <input id="cf" value={filter} onChange={(e) => setFilter(e.target.value)} />
           <div className="list">
