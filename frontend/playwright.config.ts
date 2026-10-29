@@ -27,7 +27,7 @@ export default defineConfig({
   webServer: [
     {
       // Fresh synthetic database for every run, so the scripted cases are deterministic.
-      command: "export POC_DB=sqlite POC_DEMO_MODE=1 POC_ADMIN_PASSWORD=e2e-admin-password-1 POC_DB_PATH=frontend/.playwright-poc.sqlite3 && .venv/bin/python -m backend.seed --reset && .venv/bin/python -m backend.admin create-admin --email admin@example.nl --name \"Test Admin\" < /dev/null && .venv/bin/python -m uvicorn backend.app:app --host 127.0.0.1 --port 8010",
+      command: "export POC_DB=sqlite LLM_PROVIDER=mock AI_PROVIDER=mock POC_DEMO_MODE=1 POC_ADMIN_PASSWORD=e2e-admin-password-1 POC_DB_PATH=frontend/.playwright-poc.sqlite3 && .venv/bin/python -m backend.seed --reset && .venv/bin/python -m backend.admin create-admin --email admin@example.nl --name \"Test Admin\" < /dev/null && .venv/bin/python -m uvicorn backend.app:app --host 127.0.0.1 --port 8010",
       cwd: "..",
       url: "http://127.0.0.1:8010/health",
       reuseExistingServer: false,

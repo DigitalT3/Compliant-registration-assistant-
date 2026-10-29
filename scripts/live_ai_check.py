@@ -25,8 +25,8 @@ SAMPLES = [
 
 def main() -> int:
     cfg = settings.get_config()
-    if settings.ai_settings()["provider"] != "live":
-        print("AI_PROVIDER is not 'live'; nothing to check.")
+    if settings.ai_settings()["provider"] == "mock":
+        print("The AI provider is the mock (set LLM_PROVIDER=bedrock or AI_PROVIDER=live); nothing to check.")
         return 2
     provider, failures, hits = ai.get_provider(), 0, 0
     payload = {"taxonomy": cfg["root_causes"], "types": [t["id"] for t in cfg["types"]],

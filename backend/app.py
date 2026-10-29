@@ -45,7 +45,7 @@ async def lifespan(app: FastAPI):
 def create_app() -> FastAPI:
     """Build the FastAPI app with routers, request IDs, size limits and error envelope."""
     app = FastAPI(title="Renewi Complaint Registration Assistant PoC API",
-                  description="Demonstrator backend. SYNTHETIC DATA ONLY. AI is MOCK unless AI_PROVIDER=live. "
+                  description="Demonstrator backend. SYNTHETIC DATA ONLY. AI is MOCK unless AI_PROVIDER=live or LLM_PROVIDER=bedrock. "
                               "Demo-role auth via X-Demo-User header is not production authentication.",
                   version="0.2.0", openapi_tags=TAGS, lifespan=lifespan)
     origins = os.environ.get("CORS_ORIGINS", "http://localhost:5173,http://localhost:3000").split(",")

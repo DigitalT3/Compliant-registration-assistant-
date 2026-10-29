@@ -8,7 +8,7 @@ API_PORT="${API_PORT:-8000}"
 WEB_PORT="${WEB_PORT:-5173}"
 
 [ -d .venv ] || python3 -m venv .venv
-.venv/bin/python -c "import fastapi, uvicorn, pydantic" 2>/dev/null || .venv/bin/pip install -q -r requirements.txt
+.venv/bin/python -c "import fastapi, uvicorn, pydantic, boto3" 2>/dev/null || .venv/bin/pip install -q -r requirements.txt
 [ -f .env ] || cp .env.example .env
 [ -d frontend/node_modules ] || (cd frontend && npm install)
 

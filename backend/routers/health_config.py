@@ -36,14 +36,14 @@ def _public(cfg: dict) -> dict:
             "classification": cfg["classification"], "summary": cfg["summary"], "repeat_rule": cfg["repeat_rule"],
             "defaults": cfg["defaults"], "field_options": cfg["field_options"], "baseline": cfg["baseline"], "provisional_meta": cfg["provisional_meta"],
             "roles": cfg["roles"], "demo_users": cfg["demo_users"], "synthetic_only": True,
-            "ai": {"provider": ai["provider"], "model": ai["model"], "mock": ai["provider"] != "live"}}
+            "ai": {"provider": ai["provider"], "model": ai["model"], "mock": ai["provider"] == "mock"}}
 
 
 @router.get("/health", tags=["health"], summary="Liveness and mode information")
 def health():
     """Return service status and mode flags (synthetic data, AI provider)."""
     return {"status": "ok", "poc": True, "synthetic_only": True, "ai_provider": ai_settings()["provider"],
-            "ai_mock": ai_settings()["provider"] != "live", "clock_mode": "fixed" if db.reference_now() == db.seed_anchor() else "real"}
+            "ai_mock": ai_settings()["provider"] == "mock", "ai_region": ai_settings()["region"] or None, "clock_mode": "fixed" if db.reference_now() == db.seed_anchor() else "real"}
 
 
 @router.get("/api/config", tags=["config"], summary="Effective non-secret configuration")

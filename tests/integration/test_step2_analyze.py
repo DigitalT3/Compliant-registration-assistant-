@@ -155,3 +155,52 @@ def test_live_timeout_and_garbage_fall_back(client, live, monkeypatch):
     assert analyze(client, SERVICE)["error_category"] == "timeout"
     monkeypatch.setattr(httpx, "post", lambda *a, **k: _Resp("not json"))
     assert analyze(client, SERVICE)["ai_status"] == "failed"
+
+
+# ---- Bedrock provider contract (no network: the boto3 client is replaced) --------------------------
+class _FakeBedrock:
+    def __init__(self, text=None, error=None):
+        self.text, self.error, self.calls = text, error, []
+
+    def converse(self, **kw):
+        self.calls.append(kw)
+        if self.error:
+            raise self.error
+        return {"output": {"message": {"content": [{"text": self.text}]}}}
+
+
+@pytest.fixture()
+def bedrock(monkeypatch):
+    monkeypatch.setenv("LLM_PROVIDER", "bedrock")
+    monkeypatch.setenv("AWS_REGION", "eu-central-1")
+    monkeypatch.setenv("BEDROCK_MODEL_ID", "eu.example-model")
+
+    def install(fake):
+        monkeypatch.setattr(ai.BedrockProvider, "_bedrock", lambda self: fake)
+    return install
+
+
+_GOOD = ('{"summary": {"what": "Container not emptied", "language": "en", "extras": {}}, "classification": '
+         '{"complaint_type": "service", "candidates": [{"root_cause_id": "missed", "reason": "not emptied", "confidence": 0.9}]}}')
+
+
+def test_bedrock_request_and_fenced_reply(client, bedrock):
+    fake = _FakeBedrock("Here you go:\n```json\n" + _GOOD + "\n```")
+    bedrock(fake)
+    out = analyze(client, SERVICE, complaint_type="service")
+    assert out["ai_status"] == "ok" and out["mock"] is False and out["provider"] == "bedrock" and out["preselect"] == "missed"
+    call = fake.calls[0]
+    assert call["modelId"] == "eu.example-model" and call["inferenceConfig"]["temperature"] == 0
+    assert "untrusted" in call["system"][0]["text"]
+    assert call["messages"][0]["content"][0]["text"].startswith("<complaint>")
+    assert client.get("/health").json()["ai_region"] == "eu-central-1"
+
+
+def test_bedrock_faults_fall_back(client, bedrock):
+    from botocore.exceptions import ClientError, ReadTimeoutError
+    bedrock(_FakeBedrock(error=ReadTimeoutError(endpoint_url="https://x")))
+    assert analyze(client, SERVICE)["error_category"] == "timeout"
+    bedrock(_FakeBedrock(error=ClientError({"Error": {"Code": "AccessDeniedException"}}, "Converse")))
+    assert analyze(client, SERVICE)["error_category"] == "unavailable"
+    bedrock(_FakeBedrock("no json here"))
+    assert analyze(client, SERVICE)["error_category"] == "invalid_output"

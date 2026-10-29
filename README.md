@@ -91,6 +91,8 @@ By default the PoC uses the local SQLite file. To use a hosted Supabase database
 
 Copy `.env.example` to `.env` for local settings. `AI_PROVIDER=mock` is the safe default. Live OpenAI-compatible mode requires an approved endpoint and credentials through `AI_BASE_URL`, `AI_MODEL`, and `AI_API_KEY`; it was not verified because no credentials were supplied.
 
+**Claude on Amazon Bedrock** (`LLM_PROVIDER=bedrock`, wins over `AI_PROVIDER`): set `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION` and `BEDROCK_MODEL_ID` in `.env` (keys stay out of git), restart the backend, then run `python -m scripts.live_ai_check`. Verified once against Bedrock in `us-east-2` (6/6 valid answers, about 3-5 s each). For the PRD's EU-hosting requirement use an EU region (e.g. `eu-central-1`) and an `eu.` inference profile; `/health` shows `ai_region`. Tests never call a real model.
+
 ## Tests
 
 Run backend tests from the project root.

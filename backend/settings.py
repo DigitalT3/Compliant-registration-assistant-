@@ -58,9 +58,11 @@ def ai_settings() -> dict:
     """Return AI settings; environment variables take precedence over config.json."""
     base = dict(db.config()["ai"])
     env = os.environ
+    provider = (env.get("LLM_PROVIDER") or env.get("AI_PROVIDER") or base["provider"]).lower()
     return {
-        "provider": (env.get("AI_PROVIDER") or base["provider"]).lower(),
-        "model": env.get("AI_MODEL") or base["model"],
+        "provider": provider,
+        "model": (env.get("BEDROCK_MODEL_ID") if provider == "bedrock" else None) or env.get("AI_MODEL") or base["model"],
+        "region": env.get("AWS_REGION") or env.get("AWS_DEFAULT_REGION") or "",
         "base_url": env.get("AI_BASE_URL", ""),
         "api_key": env.get("AI_API_KEY", ""),
         "timeout_s": float(env.get("AI_TIMEOUT_S") or base["timeout_s"]),

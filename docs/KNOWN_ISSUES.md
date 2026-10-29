@@ -12,7 +12,7 @@ SQLite and demo-role headers are suitable for local demonstration, not productio
 
 ## Added in the extension of the PoC
 
-- Live AI is still untested: it needs an approved, EU-hosted OpenAI-compatible endpoint and key. Run `python scripts/live_ai_check.py` with `AI_PROVIDER` set to the live provider once available; the mock keyword classifier is not evidence of real accuracy.
+- Live AI (Bedrock) ran once in `us-east-2` with a `global.` inference profile, which is NOT EU-only; switch to an EU region and `eu.` profile before any real data. Only the OpenAI-compatible provider remains untested. Original note: it needs an approved, EU-hosted OpenAI-compatible endpoint and key. Run `python scripts/live_ai_check.py` with `AI_PROVIDER` set to the live provider once available; the mock keyword classifier is not evidence of real accuracy.
 - The taxonomy (8 categories, 11 causes), defaults, response targets and the category-level repeat match are drafts that need Renewi confirmation.
 - The seeded history (45 complaints, about 36% `Other`) is synthetic and only demonstrates the dashboard; it is not evidence of the 10% `Other` target.
 - Browser tests need Google Chrome installed and free ports 8010 and 5183.

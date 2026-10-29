@@ -5,6 +5,11 @@ import uuid
 import pytest
 from fastapi.testclient import TestClient
 
+# Tests never call a real model, whatever .env says (db.py loads .env on import).
+os.environ["LLM_PROVIDER"] = ""
+os.environ["AI_PROVIDER"] = "mock"
+os.environ["AI_TIMEOUT_S"] = "3.5"
+
 from backend import db, seed
 from backend.services import ai
 from backend.settings import invalidate_config
