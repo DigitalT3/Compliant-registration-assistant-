@@ -12,12 +12,12 @@ def test_every_table_is_hardened_and_ordered():
     files = export.build()
     names = sorted(files)
     assert names == [f"20261029{i:06d}_{n}.sql" for i, n in
-                     zip(range(1, 7), ["base_schema", "poc_entities", "form_fields", "root_cause_category",
-                                        "user_test_support", "security_and_version"])]
+                     zip(range(1, 8), ["base_schema", "poc_entities", "form_fields", "root_cause_category",
+                                        "user_test_support", "employee_accounts", "security_and_version"])]
     sql = "\n".join(files.values())
     import re
     tables = set(re.findall(r"CREATE TABLE IF NOT EXISTS (\w+)", sql))
-    assert len(tables) == 21
+    assert len(tables) == 22
     for t in tables | {"schema_meta"}:
         assert f'ALTER TABLE "{t}" ENABLE ROW LEVEL SECURITY;' in files[names[-1]], t
     assert "AUTOINCREMENT" not in sql and "PRAGMA" not in sql

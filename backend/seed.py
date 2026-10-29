@@ -94,7 +94,8 @@ def _seed_reference(conn, stamp: str) -> None:
             (c["id"], c["level1"], c.get("level2"), c["en"], c["nl"], c["definition"],
              c["examples"], cfg["taxonomy_version"]))
     for u in cfg["demo_users"]:
-        conn.execute("INSERT INTO users VALUES(?,?,?,?)", (u["id"], u["name"], u["role"], u["group"]))
+        conn.execute("INSERT INTO users(id,name,role,user_group) VALUES(?,?,?,?)",
+                     (u["id"], u["name"], u["role"], u["group"]))
     for kind, version, content in [
         ("defaults", cfg["version"], cfg["defaults"]),
         ("taxonomy", cfg["taxonomy_version"], cfg["root_causes"]),

@@ -108,3 +108,31 @@ dd { margin: 0; overflow-wrap: anywhere; }
   .stepper { display: grid; grid-template-columns: 1fr 1fr; }
   dl { grid-template-columns: 1fr; gap: .1rem; }
 }
+
+/* Sign-in / sign-up and user administration */
+.auth-page { min-height: 100vh; display: grid; place-items: center; padding: 1.5rem; background: #f3f6f5; }
+.auth-card { width: min(440px, 100%); background: #fff; border: 1px solid #d3ded9; border-radius: 10px; padding: 1.6rem; box-shadow: 0 4px 18px rgb(0 0 0 / 7%); }
+.auth-card h1 { margin: 0 0 .2rem; font-size: 1.35rem; }
+.auth-card .poc-banner { margin: 0 0 1rem; }
+.auth-card .lang { float: right; width: auto; }
+.auth-tabs { display: flex; gap: .4rem; margin: 1rem 0; }
+.auth-tabs button { flex: 1; background: #fff; color: #176d52; }
+.auth-tabs button.active { background: #176d52; color: #fff; }
+.auth-card label { display: block; margin: .65rem 0 .2rem; font-weight: 600; }
+.auth-card .hint { margin: .2rem 0 0; font-size: .85rem; color: #52645c; }
+.auth-card .primary { width: 100%; margin-top: 1rem; }
+.function-choice { display: grid; gap: .4rem; margin-top: .3rem; }
+.function-choice label { display: flex; gap: .5rem; align-items: center; margin: 0; padding: .5rem .6rem; border: 1px solid #8fa39a; border-radius: 6px; font-weight: 500; cursor: pointer; }
+.function-choice label:has(input:checked) { border-color: #176d52; background: #e4f4ea; }
+.function-choice input { width: auto; }
+.user-chip { display: flex; align-items: center; gap: .6rem; }
+.user-chip strong { display: block; line-height: 1.1; }
+.user-chip small { color: #52645c; }
+table.users { width: 100%; border-collapse: collapse; }
+table.users th, table.users td { text-align: left; padding: .45rem .5rem; border-bottom: 1px solid #e1e9e5; vertical-align: middle; }
+table.users select { width: auto; }
+.status-pending { color: #6a4600; background: #fff1be; }
+.status-active { color: #075d3a; background: #e4f4ea; }
+.status-disabled { color: #8c1d18; background: #ffe9e7; }
+
+.card.found { border-color: #176d52; box-shadow: 0 0 0 2px #cfe9dc; }

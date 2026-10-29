@@ -121,7 +121,19 @@ def _migrate_v5(db) -> None:
     """)
 
 
-MIGRATIONS = {2: _migrate_v2, 3: _migrate_v3, 4: _migrate_v4, 5: _migrate_v5}
+def _migrate_v6(db) -> None:
+    """Employee accounts: e-mail login, function category, approval status and lockout counters."""
+    for column, ddl in [("email", "TEXT"), ("password_hash", "TEXT"), ("function", "TEXT"),
+                        ("status", "TEXT DEFAULT 'active'"), ("created_at", "TEXT"), ("last_login_at", "TEXT"),
+                        ("failed_logins", "INTEGER DEFAULT 0"), ("locked_until", "TEXT")]:
+        _add_column(db, "users", column, ddl)
+    db.executescript("""
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_users_email ON users(lower(email));
+    CREATE TABLE IF NOT EXISTS app_settings(key TEXT PRIMARY KEY, value TEXT NOT NULL);
+    """)
+
+
+MIGRATIONS = {2: _migrate_v2, 3: _migrate_v3, 4: _migrate_v4, 5: _migrate_v5, 6: _migrate_v6}
 
 
 # PUBLIC_INTERFACE

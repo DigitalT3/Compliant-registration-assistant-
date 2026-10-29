@@ -21,7 +21,7 @@ async function search(page: Page, q: string) {
 }
 
 async function selectFirst(page: Page) {
-  await page.getByRole("button", { name: "Select", exact: true }).first().click();
+  await page.getByRole("button", { name: /^(Select|Use this customer)$/ }).first().click();
   await expect(page.getByText("Customer context")).toBeVisible();
 }
 
@@ -172,7 +172,7 @@ test("T21 pasted email identifies the customer and fills the description", async
     "Van: planning@example.nl\nOnderwerp: Klacht\n\nGoedemorgen, onze container BOX-009-1 is vandaag niet geleegd. Klantnummer 100009.");
   await page.getByRole("button", { name: "Extract from email" }).click();
   await expect(page.getByText(/Customer identified via 100009/)).toBeVisible();
-  await expect(page.getByText(/Matched via customer_number/)).toBeVisible();
+  await expect(page.getByText(/Matched via customer number/)).toBeVisible();
   await selectFirst(page);
   await page.getByLabel("Site", { exact: true }).selectOption("C009-S1");
   await page.getByRole("button", { name: "Next", exact: true }).click();
@@ -216,4 +216,135 @@ test("T24 interface switches to Dutch", async ({ page }) => {
   await page.getByLabel("Language").selectOption("nl");
   await expect(page.getByText("Klantnummer, order, container, naam of postcode")).toBeVisible();
   await expect(page.getByRole("button", { name: "Zoeken" })).toBeVisible();
+});
+
+
+// ---- Employee accounts: registration with a function category, approval, sign-in, role-based menu ----
+
+const API = "http://127.0.0.1:8010";
+const ADMIN = { "X-Demo-User": "demo.admin" };
+
+async function openSignedOut(page: Page) {
+  await page.addInitScript(() => { localStorage.setItem("cra.lang", "en"); localStorage.removeItem("cra.user"); sessionStorage.clear(); });
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "Complaint Registration Assistant" })).toBeVisible();
+}
+
+test("T25 employee creates an account with a function, an admin approves it, then they sign in", async ({ page, request }) => {
+  await openSignedOut(page);
+  await expect(page.getByLabel("Work e-mail address")).toBeVisible();                       // sign-in screen first
+  await page.getByRole("tab", { name: "Create account" }).click();
+  await expect(page.getByRole("radio", { name: "Customer service" })).toBeVisible();
+  await expect(page.getByRole("radio", { name: "Sales" })).toBeVisible();
+  await expect(page.getByRole("radio", { name: "Site operations" })).toBeVisible();
+  await page.getByLabel("Full name").fill("Sanne de Vries");
+  await page.getByLabel("Work e-mail address").fill("sanne.devries@example.nl");
+  await page.getByLabel("Password", { exact: true }).fill("correct-horse-9");
+  await page.getByLabel("Repeat password").fill("correct-horse-9");
+  await page.getByRole("button", { name: "Create account" }).click();
+  await expect(page.getByRole("alert")).toContainText("Choose the team you register complaints for.");   // function is required
+  await page.getByRole("radio", { name: "Sales" }).check();
+  await page.getByRole("button", { name: "Create account" }).click();
+  await expect(page.getByText("An administrator must approve it before you can sign in.")).toBeVisible();
+
+  await page.getByLabel("Work e-mail address").fill("sanne.devries@example.nl");          // not approved yet
+  await page.getByLabel("Password", { exact: true }).fill("correct-horse-9");
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await expect(page.getByText("Your account is waiting for approval by an administrator.")).toBeVisible();
+
+  const pending = await (await request.get(`${API}/api/users`, { headers: ADMIN, params: { status: "pending" } })).json();
+  const me = pending.items.find((u: any) => u.email === "sanne.devries@example.nl");
+  expect(me).toMatchObject({ function: "sales", role: "employee" });
+  expect((await request.patch(`${API}/api/users/${me.id}`, { headers: ADMIN, data: { status: "active" } })).ok()).toBe(true);
+
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await expect(page.getByText("Sanne de Vries")).toBeVisible();
+  await expect(page.getByText("Sales · employee")).toBeVisible();
+  await expect(page.getByLabel("Customer number, order, container, name or postcode")).toBeVisible();   // lands on Register
+  const menu = page.getByRole("navigation", { name: "Main navigation" });
+  await expect(menu.getByRole("button", { name: "Register" })).toBeVisible();
+  await expect(menu.getByRole("button", { name: "History" })).toBeVisible();
+  await expect(menu.getByRole("button", { name: "Dashboard" })).toHaveCount(0);            // not for employees
+  await expect(menu.getByRole("button", { name: "Configuration" })).toHaveCount(0);
+  await expect(menu.getByRole("button", { name: "Users" })).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Sign out" }).click();
+  await expect(page.getByLabel("Work e-mail address")).toBeVisible();
+});
+
+test("T26 wrong password gives a generic message; the form validates the sign-up", async ({ page }) => {
+  await openSignedOut(page);
+  await page.getByLabel("Work e-mail address").fill("nobody@example.nl");
+  await page.getByLabel("Password", { exact: true }).fill("not-a-real-password");
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await expect(page.getByRole("alert")).toContainText("Incorrect e-mail address or password.");
+  await page.getByRole("tab", { name: "Create account" }).click();
+  await page.getByLabel("Full name").fill("Test Person");
+  await page.getByLabel("Work e-mail address").fill("test.person@example.nl");
+  await page.getByLabel("Password", { exact: true }).fill("long-enough-pw-1");
+  await page.getByLabel("Repeat password").fill("something-else-123");
+  await page.getByRole("radio", { name: "Site operations" }).check();
+  await page.getByRole("button", { name: "Create account" }).click();
+  await expect(page.getByRole("alert")).toContainText("The passwords do not match.");
+});
+
+test("T27 admin approves a new employee on the Users screen; roles land on their own first screen", async ({ page, request }) => {
+  await request.post(`${API}/api/auth/register`, { data: { name: "Joost Bakker", email: "joost.bakker@example.nl", password: "another-long-pw-1", function: "customer_service" } });
+  await openApp(page, "demo.admin");
+  await expect(page.getByRole("heading", { name: "Users" })).toBeVisible();                // admin lands on Users
+  await expect(page.getByText("Joost Bakker").first()).toBeVisible();
+  await page.getByRole("button", { name: "Approve" }).first().click();
+  await expect(page.getByText("No accounts are waiting for approval.")).toBeVisible();
+  await openApp(page, "demo.lead");
+  await expect(page.getByRole("heading", { name: "PRD targets" })).toBeVisible();          // team lead lands on the dashboard
+});
+
+// ---- Find customer, in detail ----
+
+test("T28 one match is shown at once with how it was found; one click continues", async ({ page }) => {
+  await openApp(page);
+  await search(page, "ORD-002-10");
+  await expect(page.getByText("Customer found")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Delta Works Logistiek BV" })).toBeVisible();
+  await expect(page.getByText(/Matched via order number · order ORD-002-10/)).toBeVisible();
+  await expect(page.getByText(/Last order 2026-10-27/)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Select", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Use this customer" })).toBeFocused();       // Enter continues
+  await page.keyboard.press("Enter");
+  await expect(page.getByText("Customer context")).toBeVisible();
+});
+
+test("T29 several matches are listed and nothing is chosen; no match explains what to try", async ({ page }) => {
+  await openApp(page);
+  await search(page, "Delta Works");
+  await expect(page.getByText(/2 customers match “Delta Works”\. Choose the right one/)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Select", exact: true })).toHaveCount(2);
+  await expect(page.getByRole("button", { name: "Use this customer" })).toHaveCount(0);
+  await expect(page.getByText("Customer context")).toHaveCount(0);
+  await search(page, "ZZZ-nothing");
+  await expect(page.getByText("No customer found for “ZZZ-nothing”.")).toBeVisible();
+  await expect(page.getByText(/container number, starting with BOX-/)).toBeVisible();
+  await page.getByRole("button", { name: "Clear" }).click();
+  await expect(page.getByLabel(SEARCH)).toHaveValue("");
+});
+
+test("T30 the search box says what kind of identifier it looks like", async ({ page }) => {
+  await openApp(page);
+  await page.getByLabel(SEARCH).fill("BOX-004-2");
+  await expect(page.getByText("Looks like a container number")).toBeVisible();
+  await page.getByLabel(SEARCH).fill("100009");
+  await expect(page.getByText("Looks like a customer number")).toBeVisible();
+  await page.getByLabel(SEARCH).fill("1009 ZZ");
+  await expect(page.getByText("Looks like a postcode")).toBeVisible();
+});
+
+test("T21b the email panel reports language, identifiers and the copied complaint text", async ({ page }) => {
+  await openApp(page);
+  await page.getByText("Start from an email").click();
+  await page.getByLabel("Pasted email").fill("Subject: Klacht\n\nOnze container BOX-009-1 is niet geleegd. Klantnummer 100009.");
+  await page.getByRole("button", { name: "Extract from email" }).click();
+  await expect(page.getByText(/Found in the email: .*100009 ✓/)).toBeVisible();
+  await expect(page.getByText(/Language: NL/)).toBeVisible();
+  await expect(page.getByText(/The complaint text was copied to the next step/)).toBeVisible();
+  await expect(page.getByText("Customer found")).toBeVisible();
 });

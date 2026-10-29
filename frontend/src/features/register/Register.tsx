@@ -2,6 +2,16 @@ import { useEffect, useReducer, useState } from "react";
 import { get, post, ApiError } from "../../api/client";
 import { useI18n } from "../../i18n";
 
+/** Best guess of what the employee typed, shown as a hint under the search box (the search itself tries every kind). */
+const guessType = (q: string) => {
+  const v = q.trim();
+  if (/^ord-/i.test(v)) return "order";
+  if (/^box-/i.test(v)) return "container";
+  if (/^\d{6}$/.test(v)) return "customer_number";
+  if (/^\d{4}\s?[a-z]{0,2}$/i.test(v)) return "postcode";
+  return "name";
+};
+
 const STEPS = ["find_customer", "review_details", "describe_complaint", "classify", "check_repeats", "review_save"] as const;
 type Field = { value: string | null; provenance: string };
 
@@ -286,9 +296,10 @@ export default function Register({ onViewHistory, config }: { onViewHistory: () 
         <div>
           <form onSubmit={(e) => { e.preventDefault(); doSearch(); }} className="inline">
             <label htmlFor="q">{t("search.label")}</label>
-            <input id="q" value={s.q} onChange={(e) => set({ q: e.target.value })} maxLength={100} />
-            <button disabled={busy || !s.q.trim()}>{t("search")}</button>
+            <input id="q" autoFocus value={s.q} onChange={(e) => set({ q: e.target.value, search: null })} maxLength={100} />
+            <button disabled={busy || !s.q.trim()}>{busy ? t("search.searching") : t("search")}</button>
           </form>
+          {s.q.trim() && !s.search && <p className="muted" aria-live="polite">{t("search.looks", { type: t(`search.type.${guessType(s.q)}`) })}</p>}
           <details className="card" open={!!s.participant || !!s.scenarioTag || plain}>
             <summary>{t("test.title")}</summary>
             <div className="inline">
@@ -307,20 +318,46 @@ export default function Register({ onViewHistory, config }: { onViewHistory: () 
             <button className="secondary" disabled={busy || !s.email.trim()} onClick={extractEmail}>{t("email.extract")}</button>
             {s.emailNote?.failed && <p className="warn">{t("ai.failed", { cat: s.emailNote.failed })}</p>}
             {s.emailNote?.x && (
-              <p className={s.emailNote.q ? "ok" : "warn"}>
-                {s.emailNote.q ? t("email.found", { q: s.emailNote.q }) : t("email.none")}
-                {" "}{[["customer_number", s.emailNote.x.customer_number], ["order_reference", s.emailNote.x.order_reference], ["container", s.emailNote.x.container]]
-                  .filter(([, v]) => v).map(([k, v]) => `${v} ${s.emailNote.x.validation?.[k as string] ? "✓" : "✗"}`).join(" · ")}
-              </p>
+              <div className={s.emailNote.q ? "ok" : "warn"}>
+                <p style={{ margin: 0 }}>{s.emailNote.q ? t("email.found", { q: s.emailNote.q }) : t("email.none")}</p>
+                <p style={{ margin: ".3rem 0 0" }}>
+                  {t("email.ids")}: {[["customer_number", s.emailNote.x.customer_number], ["order_reference", s.emailNote.x.order_reference], ["container", s.emailNote.x.container]]
+                    .filter(([, v]) => v).map(([k, v]) => `${v} ${s.emailNote.x.validation?.[k as string] ? "✓" : "✗"}`).join(" · ") || "–"}
+                  {" · "}{t("email.language", { lang: String(s.emailNote.x.language || "?").toUpperCase() })}
+                  {" · "}{t("email.text_taken", { n: (s.emailNote.x.description || "").length })}
+                </p>
+              </div>
             )}
           </details>
-          {s.search?.match_type === "none" && <p className="warn">{t("search.none")}</p>}
-          {s.search?.ambiguous && <p className="warn">{t("search.ambiguous", { n: s.search.count })}</p>}
+          {s.search?.match_type === "none" && (
+            <div className="card warn" role="status">
+              <strong>{t("search.none2", { q: s.search.query })}</strong>
+              <p>{t("search.tip.title")}</p>
+              <ul>
+                {["number", "order", "container", "name", "postcode", "email"].map((k) => <li key={k}>{t(`search.tip.${k}`)}</li>)}
+              </ul>
+              <button className="secondary" onClick={() => set({ q: "", search: null })}>{t("search.clear")}</button>
+            </div>
+          )}
+          {s.search?.ambiguous && <p className="warn" role="status">{t("search.many", { n: s.search.count, q: s.search.query })}</p>}
           {s.search?.candidates?.map((c: any) => (
-            <div className="card" key={c.customer_id}>
-              <strong>{c.name}</strong> · {c.number} · {c.postcode}
-              <div className="muted">{t("search.matched", { type: s.search.match_type })} · {c.sites.length} {t("ctx.sites").toLowerCase()}</div>
-              <button disabled={busy} onClick={() => selectCandidate(c)}>{t("search.select")}</button>
+            <div className={`card${s.search.count === 1 ? " found" : ""}`} key={c.customer_id}>
+              {s.search.count === 1 && <span className="badge status-active">{t("search.found")}</span>}
+              <h3 style={{ margin: ".3rem 0" }}>{c.name}</h3>
+              <div>{t("f.customer_number")} {c.number} · {c.postcode}</div>
+              <div className="muted">
+                {t("search.via", { type: t(`search.type.${s.search.match_type}`) })}
+                {c.matched_order_reference && ` · ${t("search.via_order", { ref: c.matched_order_reference })}`}
+                {c.matched_container && ` · ${t("search.via_container", { ref: c.matched_container })}`}
+                {c.matched_site_name && ` · ${c.matched_site_name}`}
+              </div>
+              <div className="muted">
+                {t("search.sites")}: {c.sites.map((x: any) => `${x.name} (${x.postcode})`).join(", ")}
+                {c.last_order_date && ` · ${t("search.last_order", { date: c.last_order_date.slice(0, 10) })}`}
+              </div>
+              <button autoFocus={s.search.count === 1} disabled={busy} onClick={() => selectCandidate(c)}>
+                {s.search.count === 1 ? t("search.use") : t("search.select")}
+              </button>
             </div>
           ))}
         </div>

@@ -29,3 +29,17 @@ curl -H "X-Demo-User: demo.emp.a1" \
 ```
 
 Complaint creation requires `customer_id`, `description`, `complaint_type`, `root_cause`, and `channel`. The root cause must exist in the active taxonomy, references must belong to the customer, and `other_reason` is required when `root_cause` is `other`.
+
+## Accounts and users
+
+| Endpoint | Permission | Purpose |
+| --- | --- | --- |
+| `GET /api/auth/options` | public | Function categories, password length, whether approval and demo mode are on |
+| `POST /api/auth/register` | public | `{name, email, password, function}`; creates an employee account, `pending` when approval is required |
+| `POST /api/auth/login` | public | `{email, password}` returns `{token, expires_in, user}`; generic error for wrong e-mail or password, 403 while pending or disabled, 429 when locked |
+| `GET /api/auth/me` | signed in | Profile and permissions |
+| `POST /api/auth/logout` | signed in | Recorded in the audit trail (the token simply expires) |
+| `GET /api/users?status=` | `users` (admin) | List accounts, pending first |
+| `PATCH /api/users/{id}` | `users` (admin) | `{status, role, user_group}`; the last active admin cannot be disabled or demoted, and nobody can disable themselves |
+
+Send `Authorization: Bearer <token>`. The `X-Demo-User` header is accepted only while `POC_DEMO_MODE` is on.

@@ -10,9 +10,15 @@ def _card(conn, cust, matched_site=None, matched_order=None) -> dict:
     sites = [dict(r) for r in conn.execute(
         "SELECT id,name,reference,postcode FROM sites WHERE customer_id=? ORDER BY id", (cust["id"],))]
     last = conn.execute("SELECT max(date) FROM orders WHERE customer_id=?", (cust["id"],)).fetchone()[0]
+    site = next((x for x in sites if x["id"] == matched_site), None)
+    order = matched_order and conn.execute("SELECT reference,container FROM orders WHERE id=?",
+                                           (matched_order,)).fetchone()
     return {"customer_id": cust["id"], "number": cust["number"], "name": cust["name"],
             "postcode": cust["postcode"], "sites": sites, "last_order_date": last,
-            "matched_site_id": matched_site, "matched_order_id": matched_order}
+            "matched_site_id": matched_site, "matched_order_id": matched_order,
+            "matched_site_name": site and site["name"],
+            "matched_order_reference": order and order["reference"],
+            "matched_container": order and order["container"]}
 
 
 def _like(q: str) -> str:
@@ -50,7 +56,10 @@ def search(conn, q: str) -> dict:
             seen.setdefault(o["customer_id"], o)
         for cid, o in seen.items():
             cust = conn.execute("SELECT * FROM customers WHERE id=?", (cid,)).fetchone()
-            cands.append(_card(conn, cust, o["site_id"], o["id"] if mtype == "order" else None))
+            card = _card(conn, cust, o["site_id"], o["id"] if mtype == "order" else None)
+            if mtype == "container":
+                card["matched_container"] = o["container"]
+            cands.append(card)
     if not cands:
         rows = conn.execute("SELECT * FROM customers WHERE lower(name) LIKE ? ESCAPE '\\' ORDER BY name",
                             (_like(q),)).fetchall()

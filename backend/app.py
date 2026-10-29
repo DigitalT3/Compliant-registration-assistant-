@@ -17,7 +17,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from . import db, seed, settings
 from .errors import ApiError
-from .routers import complaints, customers, health_config, review, sessions, testing
+from .routers import accounts, complaints, customers, health_config, review, sessions, testing
 
 log = logging.getLogger("poc")
 
@@ -80,7 +80,7 @@ def create_app() -> FastAPI:
         log.exception("Unhandled error")  # stack trace stays in server logs only
         return _envelope(request, 500, "internal_error", "Unexpected error.")
 
-    for r in (health_config.router, customers.router, complaints.router, sessions.router, review.router, testing.router):
+    for r in (health_config.router, accounts.router, customers.router, complaints.router, sessions.router, review.router, testing.router):
         app.include_router(r)
     return app
 

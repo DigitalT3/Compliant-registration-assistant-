@@ -1,11 +1,22 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { ApiError, download, get, getDemoUser, post, put, setDemoUser } from "./api/client";
+import { ApiError, clearSession, download, get, getDemoUser, hasToken, post, put, setDemoUser } from "./api/client";
 import { I18nProvider, useI18n } from "./i18n";
 import Register from "./features/register/Register";
+import AuthScreen, { Me } from "./features/auth/Auth";
+import Users from "./features/users/Users";
 
-type Page = "register" | "history" | "dashboard" | "rootcauses" | "evaluation" | "config" | "about";
+type Page = "register" | "history" | "dashboard" | "rootcauses" | "evaluation" | "config" | "users" | "about";
 
-const NAV: Page[] = ["register", "history", "dashboard", "rootcauses", "evaluation", "config", "about"];
+/** Menu items and the permission each needs; items a role cannot use are not shown (the backend still enforces it). */
+const NAV: [Page, string | null][] = [
+  ["register", "register"], ["history", "read"], ["dashboard", "analytics"], ["rootcauses", "read"],
+  ["evaluation", "evaluate"], ["config", "configure"], ["users", "users"], ["about", null],
+];
+
+/** The first screen each role needs. */
+const LANDING: Record<string, Page> = {
+  employee: "register", lead: "dashboard", evaluator: "evaluation", admin: "users", governance: "history", viewer: "history",
+};
 
 function ErrorMessage({ error }: { error: string | null }) {
   const { t } = useI18n();
@@ -14,26 +25,56 @@ function ErrorMessage({ error }: { error: string | null }) {
 
 function AppShell() {
   const { lang, setLang, t } = useI18n();
+  const [me, setMe] = useState<Me | null>(null);
+  const [booted, setBooted] = useState(false);
+  const [notice, setNotice] = useState<string | undefined>();
   const [page, setPage] = useState<Page>("register");
   const [config, setConfig] = useState<any>(null);
+  const [fnLabels, setFnLabels] = useState<any[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [user, setUser] = useState(getDemoUser());
 
-  useEffect(() => {
-    Promise.all([get("/api/config"), get("/api/config/root-causes")])
-      .then(([appConfig, taxonomy]) => setConfig({ ...appConfig, ...taxonomy }))
-      .catch((cause) => setError(cause instanceof ApiError ? cause.message : String(cause)));
-  }, []);
-
-  const changeUser = (id: string) => {
-    setDemoUser(id);
-    setUser(id);
-    setPage("register");
+  const enter = (user: Me) => {
+    setNotice(undefined);
+    setMe(user);
+    setPage(LANDING[user.role] || "history");
   };
 
+  // Resume an existing session (token or demo user) or show the sign-in screen.
+  useEffect(() => {
+    const signedOut = (e: Event) => { setMe(null); setConfig(null); setNotice(t("auth.expired")); void e; };
+    window.addEventListener("cra:signed-out", signedOut);
+    if (hasToken() || getDemoUser()) get("/api/auth/me").then(enter).catch(() => undefined).finally(() => setBooted(true));
+    else setBooted(true);
+    return () => window.removeEventListener("cra:signed-out", signedOut);
+  }, []);
+
+  useEffect(() => {
+    if (!me) return;
+    Promise.all([get("/api/config"), get("/api/config/root-causes"), get("/api/auth/options")])
+      .then(([appConfig, taxonomy, opts]) => { setConfig({ ...appConfig, ...taxonomy }); setFnLabels(opts.functions); })
+      .catch((cause) => setError(cause instanceof ApiError ? cause.message : String(cause)));
+  }, [me?.id]);
+
+  const signOut = async () => {
+    try { await post("/api/auth/logout"); } catch { /* already signed out */ }
+    clearSession();
+    setMe(null); setConfig(null); setNotice(undefined);
+  };
+  const changeDemoUser = async (id: string) => {
+    setDemoUser(id);
+    enter(await get("/api/auth/me"));
+  };
+
+  if (!booted) return <main className="loading-page"><p>{t("loading")}</p></main>;
+  if (!me) return <AuthScreen notice={notice} onSignedIn={enter} />;
   if (!config) {
     return <main className="loading-page"><ErrorMessage error={error} /><p>{t("loading")}</p></main>;
   }
+
+  const demoSession = !hasToken();
+  const visible = NAV.filter(([, need]) => !need || me.permissions.includes(need)).map(([p]) => p);
+  const current: Page = visible.includes(page) ? page : visible[0];
+  const fnName = fnLabels.find((x) => x.id === me.function)?.[lang];
 
   return (
     <div className="app">
@@ -45,14 +86,20 @@ function AppShell() {
           </p>
         </div>
         <div className="header-controls">
-          <label>
-            {t("user")}
-            <select value={user} onChange={(event) => changeUser(event.target.value)}>
-              {config.demo_users.map((demo: any) => (
-                <option key={demo.id} value={demo.id}>{demo.name} ({demo.role})</option>
-              ))}
-            </select>
-          </label>
+          {demoSession ? (
+            <label>
+              {t("user")}
+              <select value={me.id} onChange={(event) => changeDemoUser(event.target.value)}>
+                {config.demo_users.map((demo: any) => (
+                  <option key={demo.id} value={demo.id}>{demo.name} ({demo.role})</option>
+                ))}
+              </select>
+            </label>
+          ) : (
+            <div className="user-chip" aria-label={t("auth.signed_in_as")}>
+              <div><strong>{me.name}</strong><small>{[fnName, me.role].filter(Boolean).join(" · ")}</small></div>
+            </div>
+          )}
           <label>
             {t("language")}
             <select value={lang} onChange={(event) => setLang(event.target.value as "nl" | "en")}>
@@ -60,29 +107,31 @@ function AppShell() {
               <option value="en">English</option>
             </select>
           </label>
+          <button className="secondary" onClick={signOut}>{demoSession ? t("auth.demo.exit") : t("auth.signout")}</button>
         </div>
       </header>
       <div className="app-body">
         <nav className="sidebar" aria-label="Main navigation">
-          {NAV.map((item) => (
+          {visible.map((item) => (
             <button
-              className={page === item ? "active" : ""}
+              className={current === item ? "active" : ""}
               key={item}
               onClick={() => setPage(item)}
-              aria-current={page === item ? "page" : undefined}
+              aria-current={current === item ? "page" : undefined}
             >
               {t(`nav.${item}`)}
             </button>
           ))}
         </nav>
         <main className="content">
-          {page === "register" && <Register config={config} onViewHistory={() => setPage("history")} />}
-          {page === "history" && <History config={config} />}
-          {page === "dashboard" && <Dashboard />}
-          {page === "rootcauses" && <RootCauses config={config} />}
-          {page === "evaluation" && <Evaluation config={config} />}
-          {page === "config" && <Configuration config={config} onUpdated={setConfig} />}
-          {page === "about" && <About />}
+          {current === "register" && <Register config={config} onViewHistory={() => setPage("history")} />}
+          {current === "history" && <History config={config} />}
+          {current === "dashboard" && <Dashboard />}
+          {current === "rootcauses" && <RootCauses config={config} />}
+          {current === "evaluation" && <Evaluation config={config} />}
+          {current === "config" && <Configuration config={config} onUpdated={setConfig} />}
+          {current === "users" && <Users config={config} meId={me.id} />}
+          {current === "about" && <About />}
         </main>
       </div>
     </div>

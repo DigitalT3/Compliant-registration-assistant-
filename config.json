@@ -316,7 +316,8 @@
       "analytics",
       "configure",
       "evaluate",
-      "audit"
+      "audit",
+      "users"
     ],
     "evaluator": [
       "read",
@@ -453,6 +454,10 @@
       "provisional": true,
       "owner_to_confirm": "Glenn",
       "updated": "2026-10-28"
+    },
+    "auth_functions": {
+      "status": "TO CONFIRM",
+      "note": "Function categories come from the PRD (customer service, sales, site operations; TO CONFIRM with Renewi)."
     }
   },
   "root_cause_categories": [
@@ -507,5 +512,30 @@
     "summary_usable_min": 0.8,
     "would_use_daily_min": 5,
     "small_sample_below": 10
+  },
+  "auth": {
+    "functions": [
+      {
+        "id": "customer_service",
+        "en": "Customer service",
+        "nl": "Klantenservice"
+      },
+      {
+        "id": "sales",
+        "en": "Sales",
+        "nl": "Verkoop"
+      },
+      {
+        "id": "site_operations",
+        "en": "Site operations",
+        "nl": "Locatie-operaties"
+      }
+    ],
+    "require_approval": true,
+    "allowed_email_domains": [],
+    "token_ttl_minutes": 480,
+    "min_password_length": 10,
+    "max_failed_logins": 5,
+    "lockout_minutes": 15
   }
 }

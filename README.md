@@ -43,6 +43,15 @@ npm run dev -- --host 127.0.0.1
 
 Open `http://127.0.0.1:5173`. The API health response is at `http://127.0.0.1:8000/health`; FastAPI generates API documentation at `http://127.0.0.1:8000/docs`.
 
+## Accounts and sign-in
+
+Employees create an account on the sign-in screen with their name, work e-mail, password and **function** (customer service, sales or site operations; TO CONFIRM with Renewi). A new account is **pending** until an administrator approves it on the **Users** screen; self-registered people are always employees and cannot choose a role. After sign-in each role lands on its own first screen and only sees the menu items it may use (employee: Register, History; team lead: Dashboard; evaluator: Evaluation; admin: Users and Configuration).
+
+- Passwords are stored as salted scrypt hashes. Sign-in uses signed, expiring tokens (8 hours, kept in session storage); five wrong passwords lock the account for 15 minutes. Roles are read from the database on every request, and sign-ins, failures and role changes are in the audit trail.
+- Settings are in `config.json` under `auth` (functions, approval on/off, allowed e-mail domains, password length, lockout).
+- **Demo accounts** (the ten fictional users, no password) stay available under "Demo access" on the sign-in screen while `POC_DEMO_MODE` is on (default). Set `POC_DEMO_MODE=0` for any shared deployment. A first administrator for a real deployment is created by an existing admin, or use a demo admin in demo mode.
+- This is the PoC's own sign-in, not Renewi single sign-on. It is built so that the token check and login can be replaced by the client's identity provider (e.g. Microsoft Entra ID via OpenID Connect) without changing the screens or permissions. There is no password reset yet (an administrator disables and re-creates the account).
+
 ## Supabase (Postgres)
 
 By default the PoC uses the local SQLite file. To use a hosted Supabase database instead, put these in `.env` (never commit it): `POC_DB=postgres` and `DATABASE_URL=<Session pooler connection string, password URL-encoded>`. Choose an EU region. Restart the app; the schema is created and versioned automatically and the synthetic data is seeded only if the database is empty. `RESET=1 scripts/run_demo.sh` wipes and reseeds it.
