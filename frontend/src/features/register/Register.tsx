@@ -380,6 +380,20 @@ export default function Register({ onViewHistory, meName, config }: { onViewHist
                 {t("search.sites")}: {c.sites.map((x: any) => `${x.name} (${x.postcode})`).join(", ")}
                 {c.last_order_date && ` · ${t("search.last_order", { date: c.last_order_date.slice(0, 10) })}`}
               </div>
+              {c.contracts && (
+                <div className="card-detail">
+                  <strong>{t("search.contracts")}:</strong>{" "}
+                  {c.contracts.filter((k: any) => k.active).length === 0
+                    ? <span className="warn-text">{t("search.no_active_contract")}</span>
+                    : c.contracts.filter((k: any) => k.active).map((k: any) => `${k.reference} (${c.sites.find((x: any) => x.id === k.site_id)?.name || ""}, ${t("search.valid_to", { date: k.valid_to })})`).join(" · ")}
+                </div>
+              )}
+              {c.recent_orders?.length > 0 && (
+                <div className="card-detail">
+                  <strong>{t("search.recent")}:</strong>
+                  <ul>{c.recent_orders.map((o: any) => <li key={o.id}>{o.reference} · {o.container} · {o.date} · {o.status}</li>)}</ul>
+                </div>
+              )}
               <button autoFocus={s.search.count === 1} disabled={busy} onClick={() => selectCandidate(c)}>
                 {s.search.count === 1 ? t("search.use") : t("search.select")}
               </button>

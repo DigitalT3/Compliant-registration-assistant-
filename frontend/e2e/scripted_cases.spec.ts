@@ -558,3 +558,23 @@ test("T36 data pages list all customers with a customer column; adding there ask
   await expect(page.getByText(/1–25 of \d+/)).toBeVisible();
   await expect(page.getByRole("row", { name: /Delta Works/ })).toHaveCount(0);                      // filtered to one customer
 });
+
+test("T37 the result card already shows the contract and the three latest orders (step 1)", async ({ page }) => {
+  await openApp(page);
+  await search(page, "100009");
+  const card = page.locator(".card.found");
+  await expect(card.getByText("Customer found")).toBeVisible();
+  await expect(card.getByText(/Contracts:/)).toBeVisible();
+  await expect(card.getByText(/CON-009-1 \(Synthetic depot 1, valid to 2027-08-24\)/)).toBeVisible();
+  await expect(card.getByText("Recent orders:")).toBeVisible();
+  await expect(card.locator("li")).toHaveCount(3);                                            // the three latest
+  const items = await card.locator("li").allInnerTexts();
+  expect(items.every((t) => /^ORD-009-\w+ · BOX-009-\d · \d{4}-\d{2}-\d{2} · \w+/.test(t))).toBe(true);   // reference · container · date · status
+  const dates = items.map((t) => t.split(" · ")[2]);
+  expect(dates).toEqual([...dates].sort().reverse());                                         // newest first
+  await search(page, "ORD-002-10");                                                           // orders of the matched site only
+  await expect(page.locator(".card.found").getByText(/Matched via order number/)).toBeVisible();
+  await expect(page.locator(".card.found li").first()).toContainText("ORD-002-10");
+  await search(page, "100021");                                                               // seeded customer with an expired contract
+  await expect(page.locator(".card.found").getByText("No active contract")).toBeVisible();
+});

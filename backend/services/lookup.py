@@ -21,6 +21,23 @@ def _card(conn, cust, matched_site=None, matched_order=None) -> dict:
             "matched_container": order and order["container"]}
 
 
+_DETAIL_MAX_CANDIDATES = 5   # two extra queries per card: skip them for broad searches that return many customers
+
+
+def _detail(conn, card: dict) -> None:
+    """Add the customer's contracts and its three most recent orders (at the matched site, if any) to a result card."""
+    card["contracts"] = [
+        {"id": r["id"], "reference": r["reference"], "site_id": r["site_id"], "valid_to": (r["valid_to"] or "")[:10],
+         "active": r["status"] == "active"}
+        for r in conn.execute("SELECT id,reference,site_id,status,valid_to FROM contracts WHERE customer_id=? "
+                              "ORDER BY id", (card["customer_id"],))]
+    sql, args = "SELECT id,reference,container,site_id,date,status FROM orders WHERE customer_id=?", [card["customer_id"]]
+    if card["matched_site_id"]:
+        sql, args = sql + " AND site_id=?", args + [card["matched_site_id"]]
+    card["recent_orders"] = [dict(r) | {"date": (r["date"] or "")[:10]}
+                             for r in conn.execute(sql + " ORDER BY date DESC LIMIT 3", args)]
+
+
 def _like(q: str) -> str:
     return "%" + q.lower().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
 
@@ -87,6 +104,9 @@ def search(conn, q: str) -> dict:
                                         (r["id"], pc + "%")).fetchone()
                     cands.append(_card(conn, r, site and site["id"]))
     cands.sort(key=lambda c: c["last_order_date"] or "", reverse=True)
+    if len(cands) <= _DETAIL_MAX_CANDIDATES:
+        for card in cands:
+            _detail(conn, card)
     return {"query": q, "match_type": mtype if cands else "none", "ambiguous": len(cands) > 1,
             "count": len(cands), "candidates": cands}
 

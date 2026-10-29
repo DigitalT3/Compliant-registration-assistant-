@@ -341,5 +341,10 @@ export const en: Record<string, string> = {
   "cd.number_auto": "The customer number is assigned automatically.",
   "cd.customer_added": "Customer added: {name} ({number}).",
   "cd.open": "Open",
-  "cd.need_site": "This customer has no site yet. Add a site first."
+  "cd.need_site": "This customer has no site yet. Add a site first.",
+  "search.contracts": "Contracts",
+  "search.recent": "Recent orders",
+  "search.valid_to": "valid to {date}",
+  "search.no_active_contract": "No active contract",
+  "search.expired": "expired {date}"
 };

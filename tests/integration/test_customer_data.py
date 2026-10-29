@@ -160,3 +160,32 @@ def test_rows_across_all_customers_with_filter_search_and_customer_columns(clien
     assert client.get("/api/customer-data/nonsense", headers=EMP).status_code == 422
     assert client.get("/api/customer-data/sites", headers=VIEWER).status_code == 403
     assert client.get("/api/customer-data/sites", headers=EMP, params={"q": "%"}).json()["total"] == 0   # wildcards are not injected
+
+
+# ---- the result card shows the contract and the recent orders (PRD step 1) ----
+
+def search(client, q):
+    return client.get("/api/customers/search", headers=EMP, params={"q": q}).json()
+
+
+def test_result_card_has_contracts_and_the_three_latest_orders(client):
+    card = search(client, "100009")["candidates"][0]
+    assert [(c["reference"], c["active"], c["valid_to"]) for c in card["contracts"]] == [
+        ("CON-009-1", True, "2027-08-24"), ("CON-009-2", True, "2027-08-24")]
+    assert len(card["recent_orders"]) == 3
+    dates = [o["date"] for o in card["recent_orders"]]
+    assert dates == sorted(dates, reverse=True) and {"reference", "container", "status"} <= set(card["recent_orders"][0])
+
+
+def test_card_orders_follow_the_matched_site_and_expired_contracts_are_flagged(client):
+    by_order = search(client, "ORD-002-10")["candidates"][0]
+    assert {o["site_id"] for o in by_order["recent_orders"]} == {by_order["matched_site_id"]}   # only that site's orders
+    expired = search(client, "100021")["candidates"][0]                                         # the seeded expired-contract customer
+    assert [c["active"] for c in expired["contracts"]] == [False]
+
+
+def test_broad_searches_skip_the_extra_detail(client):
+    many = search(client, "a")                                    # matches many customers
+    assert many["count"] > 5 and all("contracts" not in c for c in many["candidates"])
+    few = search(client, "Delta Works")
+    assert few["count"] == 2 and all("contracts" in c and "recent_orders" in c for c in few["candidates"])
