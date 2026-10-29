@@ -8,11 +8,12 @@ import logging
 import os
 import uuid
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from . import db, seed, settings
@@ -39,6 +40,30 @@ async def lifespan(app: FastAPI):
     db.initialize()
     seed.seed_if_empty()
     yield
+
+
+def _serve_frontend(app: FastAPI) -> None:
+    """Serve the built front end (``frontend/dist``) from this server: one address for the pages and the API.
+
+    Used for a hosted deployment (``SERVE_FRONTEND=1``); locally the Vite dev server does this. Unknown paths
+    return the app's index page so a reload on any screen works; unknown ``/api`` paths stay a JSON 404.
+    """
+    dist = Path(os.environ.get("FRONTEND_DIST") or Path(__file__).resolve().parents[1] / "frontend" / "dist").resolve()
+    index = dist / "index.html"
+    if not index.is_file():
+        log.warning("SERVE_FRONTEND is set but %s has no index.html; build the front end first", dist)
+        return
+
+    @app.get("/{path:path}", include_in_schema=False)
+    def frontend(path: str):
+        if path == "api" or path.startswith("api/"):
+            raise ApiError(404, "not_found", "Unknown API route.")
+        target = (dist / path).resolve()
+        if path and target.is_file() and dist in target.parents:
+            # built files carry a hash in their name, so they can be kept for a year
+            cache = "public, max-age=31536000, immutable" if path.startswith("assets/") else "no-cache"
+            return FileResponse(target, headers={"Cache-Control": cache})
+        return FileResponse(index, headers={"Cache-Control": "no-cache"})
 
 
 # PUBLIC_INTERFACE
@@ -82,6 +107,8 @@ def create_app() -> FastAPI:
 
     for r in (health_config.router, accounts.router, customers.router, complaints.router, sessions.router, review.router, testing.router):
         app.include_router(r)
+    if os.environ.get("SERVE_FRONTEND") == "1":
+        _serve_frontend(app)        # last: its catch-all must not shadow an API route
     return app
 
 

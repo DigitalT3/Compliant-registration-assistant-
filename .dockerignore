@@ -1,0 +1,19 @@
+# Never send secrets, local databases or dependencies to the build.
+.env
+.env.*
+!.env.example
+.git
+.venv
+venv
+**/__pycache__
+**/*.pyc
+**/node_modules
+frontend/dist
+frontend/test-results
+frontend/playwright-report
+frontend/.playwright-poc.sqlite3
+*.sqlite3
+.claude
+tests
+docs
+supabase
