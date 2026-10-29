@@ -139,7 +139,7 @@ function AppShell() {
                 onDone={(u) => { setMe(u); setChangingPw(false); setNotice(undefined); }} />
             </div>
           )}
-          {current === "register" && <Register config={config} meName={me.name} onViewHistory={() => setPage("history")} onManageData={() => setPage("sites")} />}
+          {current === "register" && <Register config={config} meName={me.name} onViewHistory={() => setPage("history")} />}
           {current === "customers" && <CustomersPage onOpen={() => setPage("sites")} />}
           {DATA_PAGES.includes(current as Section) && <CustomerDataPage section={current as Section} onBack={() => setPage("register")} />}
           {current === "history" && <History config={config} />}

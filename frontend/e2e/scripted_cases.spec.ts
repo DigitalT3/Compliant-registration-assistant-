@@ -433,7 +433,8 @@ test("T33 an employee adds a site, container, contract and order; they appear in
   await search(page, "100009");
   await selectFirst(page);
   await expect(page.locator(".row", { hasText: "Registered by" })).toContainText("Demo Employee A1");   // a name, not an id
-  await page.getByRole("button", { name: /Add or manage this customer's sites/ }).click();
+  await expect(page.getByRole("button", { name: /Add or manage this customer's sites/ })).toHaveCount(0);   // reached through the menu instead
+  await page.getByRole("navigation", { name: "Main navigation" }).getByRole("button", { name: "Sites", exact: true }).click();
 
   const left = page.getByRole("navigation", { name: "Main navigation" });
   await expect(page.getByRole("heading", { name: "Sites", exact: true })).toBeVisible();          // Sites is a menu item of its own

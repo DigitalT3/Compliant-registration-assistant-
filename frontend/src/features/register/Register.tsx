@@ -68,7 +68,7 @@ function Prov({ p }: { p: string }) {
   return <span className={`badge prov-${p}`} title={t("prov.tip")}>{t(`prov.${p}`)}</span>;
 }
 
-export default function Register({ onViewHistory, onManageData, meName, config }: { onViewHistory: () => void; onManageData: () => void; meName?: string; config: any }) {
+export default function Register({ onViewHistory, meName, config }: { onViewHistory: () => void; meName?: string; config: any }) {
   const { t, lang } = useI18n();
   const [s, set] = useReducer(reducer, undefined, load);
   const [err, setErr] = useState<string | null>(null);
@@ -420,7 +420,6 @@ export default function Register({ onViewHistory, onManageData, meName, config }
             {row("registering_user", <span>{meName || val("registering_user")}</span>)}
             {row("registration_date", <span>{val("registration_date")}</span>)}
           </div>
-          <p><button className="secondary" onClick={onManageData}>{t("cd.manage")} →</button></p>
           <CustomerData ctx={s.ctx} siteId={val("site_id")} contractId={val("contract_id")} orderId={val("order_id")}
             onPickSite={changeSite} onPickContract={pickContract} onPickOrder={pickOrder} />
         </div>
