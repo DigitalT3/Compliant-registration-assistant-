@@ -1,0 +1,13 @@
+{"label": "Ten typical complaint e-mails (synthetic, fictional customers) for FR-02. Expected: the customer number the e-mail belongs to.",
+ "cases": [
+  {"id": "E01", "expected": "100009", "text": "Van: planning@zorgcentrumhetanker.example\nAan: klantenservice@renewi.example\nOnderwerp: Container niet geleegd\n\nGoedemorgen,\n\nOnze container BOX-009-1 is vandaag niet geleegd. Klantnummer 100009. Graag een oplossing.\n\nGroet,\nMarieke"},
+  {"id": "E02", "expected": "100002", "text": "From: office@logistiek.example\nSubject: Wrong invoice\n\nHello, the invoice for order ORD-002-10 shows a weight we cannot recognise. Could you check it?\n\nKind regards,\nPeter"},
+  {"id": "E03", "expected": "100004", "text": "Van: inkoop@metaal.example\nOnderwerp: Beschadigde container\n\nContainer BOX-004-1 op ons terrein is beschadigd door de chauffeur. Willen jullie dit komen bekijken?\n\nMet vriendelijke groet,\nHans"},
+  {"id": "E04", "expected": "100011", "text": "From: jan@smit.example\nSubject: Missed collection\n\nHi,\n\nNobody came to empty our bins on Tuesday and it is the second time this month. Please fix this.\n\nThanks,\nJan de Boer\nSmit Schoonmaakdiensten BV\nTel 06 12345678"},
+  {"id": "E05", "expected": "100015", "text": "Van: bert@vanleeuwen.example\nAan: klantenservice@renewi.example\nOnderwerp: Klacht klant 100015\n\nBeste,\n\nDe ophaling is gisteren niet gekomen. Kunnen jullie vandaag nog langskomen?\n\nBert"},
+  {"id": "E06", "expected": "100020", "text": "Hello,\n\nThe driver left the container blocking our entrance and we could not get the trucks out.\n\nRegards,\nSanne\nBoerenhof Kaasmakerij VOF\n1020ZZ"},
+  {"id": "E07", "expected": "100020", "text": "Van: sanne@boerenhof.example\nOnderwerp: Factuur\n\nGoedemiddag, volgens ons klopt de factuur van ord-020-10 niet. Het gewicht is veel te hoog.\n\nGroet, Sanne"},
+  {"id": "E08", "expected": "100025", "text": "Van: logistiek@oosterhout.example\nOnderwerp: Klacht\n\nBeste klantenservice,\n\nOnder klantnr. 100025 hebben wij order ORD-025-10 geplaatst. De container is niet op tijd geleverd en de lading ligt nog bij ons.\n\nGroet,\nKees"},
+  {"id": "E09", "expected": "100006", "text": "From: accounts@peeters.example\nSubject: Complaint about service\n\nDear team,\n\nThe crew was very rude to our staff yesterday. This is not acceptable.\n\nPeeters Bouwmaterialen\nBouwlaan 1, 1006ZZ"},
+  {"id": "E10", "expected": "100030", "text": "Van: info@deschonezaak.example\nOnderwerp: Geen levering\n\nHallo,\n\nDe nieuwe container is nog steeds niet geplaatst. Wij wachten al twee weken.\n\nMet vriendelijke groet,\nLinda\nDe Schone Zaak Wasserij"}
+ ]}

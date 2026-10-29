@@ -92,6 +92,13 @@ def extract(body: ExtractIn, user: dict = Depends(require("register"))):
                 "customer_number": None if not r["customer_number"] else bool(lookup.search(conn, r["customer_number"])["count"]),
                 "order_reference": None if not r["order_reference"] else bool(lookup.search(conn, r["order_reference"])["count"]),
                 "container": None if not r["container"] else bool(lookup.search(conn, r["container"])["count"])}
+            # which customer the e-mail is about: a number that exists first, else the company name or postcode in the text
+            v = r["validation"]
+            q = (v["customer_number"] and r["customer_number"]) or (v["order_reference"] and r["order_reference"]) or (v["container"] and r["container"]) or None
+            by = "customer_number" if q and q == r["customer_number"] else "order_reference" if q and q == r["order_reference"] else "container" if q else None
+            if not q:
+                q, by = lookup.find_in_text(conn, body.text)
+            r["customer_query"], r["matched_by"] = q, by
         return out
 
 

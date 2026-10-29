@@ -111,6 +111,38 @@ def search(conn, q: str) -> dict:
             "count": len(cands), "candidates": cands}
 
 
+_LEGAL = re.compile(r"[\s,]+(b\.?v\.?|n\.?v\.?|v\.?o\.?f\.?|vof|bv|nv)\s*$", re.I)
+_NAME_MIN = 6            # shorter names are too likely to occur by chance in a text
+
+
+def _plain(text: str) -> str:
+    return re.sub(r"\s+", " ", text.lower()).strip()
+
+
+# PUBLIC_INTERFACE
+def find_in_text(conn, text: str) -> tuple[str | None, str | None]:
+    """Find the customer an e-mail is about when it has no usable number: by company name, then by postcode.
+
+    Returns ``(customer number, matched_by)`` or ``(None, None)``. A name counts when it occurs as whole words
+    (the legal form BV/NV/VOF may be left out); the longest name wins. Two different customers matching equally
+    is not decided here: the answer is None and the employee searches by hand.
+    """
+    plain, hits = " " + _plain(text) + " ", []
+    for r in conn.execute("SELECT number, name FROM customers WHERE active=1").fetchall():
+        for name in {_plain(r["name"]), _plain(_LEGAL.sub("", r["name"]))}:
+            if len(name) >= _NAME_MIN and re.search(r"(?<![a-z0-9])" + re.escape(name) + r"(?![a-z0-9])", plain):
+                hits.append((len(name), r["number"]))
+    if hits:
+        best = max(h[0] for h in hits)
+        numbers = {n for ln, n in hits if ln == best}
+        return (numbers.pop(), "name") if len(numbers) == 1 else (None, None)
+    for pc in dict.fromkeys(re.findall(r"\b(\d{4})\s?([A-Za-z]{2})\b", text)):
+        found = search(conn, "".join(pc))
+        if found["match_type"] == "postcode" and found["count"] == 1:
+            return found["candidates"][0]["number"], "postcode"
+    return None, None
+
+
 # PUBLIC_INTERFACE
 def context(conn, customer_id: str, site_id: str | None = None, everything: bool = False) -> dict:
     """Return customer, sites, contracts and the last 10 orders (optionally per site)."""

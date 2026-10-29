@@ -169,7 +169,7 @@ export default function Register({ onViewHistory, meName, config }: { onViewHist
     const r = await post("/api/complaints/extract", { text: s.email });
     if (r.ai_status !== "ok") { set({ emailNote: { failed: r.error_category || "unavailable" } }); return; }
     const x = r.result, v = x.validation || {};
-    const q = (v.customer_number && x.customer_number) || (v.order_reference && x.order_reference) || (v.container && x.container) || "";
+    const q = x.customer_query || "";                    // decided by the server: a number that exists, else the company name or postcode in the text
     const guess: Record<string, { value: string; provenance: string }> = x.complaint_type ? { complaint_type: { value: x.complaint_type, provenance: "suggested" } } : {};   // confident guess from the text
     set({ text: x.description, textLang: x.language, emailNote: { x, q }, q: q || s.q, fields: { ...s.fields, ...guess },
           search: q ? await get("/api/customers/search", { q }) : null });
@@ -400,7 +400,7 @@ export default function Register({ onViewHistory, meName, config }: { onViewHist
             {s.emailNote?.failed && <p className="warn">{t("ai.failed", { cat: s.emailNote.failed })}</p>}
             {s.emailNote?.x && (
               <div className={s.emailNote.q ? "ok" : "warn"}>
-                <p style={{ margin: 0 }}>{s.emailNote.q ? t("email.found", { q: s.emailNote.q }) : t("email.none")}</p>
+                <p style={{ margin: 0 }}>{s.emailNote.q ? t("email.found", { q: s.emailNote.q }) : t("email.none")}{s.emailNote.q && ["name", "postcode"].includes(s.emailNote.x.matched_by) && ` ${t(`email.by_${s.emailNote.x.matched_by}`)}`}</p>
                 <p style={{ margin: ".3rem 0 0" }}>
                   {t("email.ids")}: {[["customer_number", s.emailNote.x.customer_number], ["order_reference", s.emailNote.x.order_reference], ["container", s.emailNote.x.container]]
                     .filter(([, v]) => v).map(([k, v]) => `${v} ${s.emailNote.x.validation?.[k as string] ? "✓" : "✗"}`).join(" · ") || "–"}
