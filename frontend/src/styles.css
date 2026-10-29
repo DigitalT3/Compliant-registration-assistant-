@@ -172,3 +172,7 @@ button.link:hover:not(:disabled) { background: none; }
 .card-detail { margin: .35rem 0; font-size: .95rem; }
 .card-detail ul { margin: .2rem 0 .2rem 1.2rem; padding: 0; }
 .warn-text { color: #6a4600; background: #fff4cf; padding: .1rem .4rem; border-radius: 4px; }
+
+/* The one field the employee still has to choose on Review details */
+.row.needs-input select { border-color: #176d52; box-shadow: 0 0 0 2px #cfe9dc; }
+.hint-row { margin: -.25rem 0 .5rem; color: #52645c; font-size: .9rem; }

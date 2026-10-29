@@ -346,5 +346,6 @@ export const nl: Record<string, string> = {
   "search.recent": "Recente orders",
   "search.valid_to": "geldig tot {date}",
   "search.no_active_contract": "Geen actief contract",
-  "search.expired": "verlopen {date}"
+  "search.expired": "verlopen {date}",
+  "review.type_hint": "Kies het klachttype: dat vult de verantwoordelijke afdeling en de reactietermijn in."
 };

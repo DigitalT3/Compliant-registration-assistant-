@@ -109,7 +109,7 @@ test("T07 invoice complaint switches type and applies that type's defaults", asy
   await expect(page.getByLabel("Invoice no.")).toHaveValue("20431");               // template follows the type
   await page.getByRole("button", { name: "Back", exact: true }).click();                // classify -> describe
   await page.getByRole("button", { name: "Back", exact: true }).click();                // describe -> review
-  await expect(page.getByLabel("Channel")).toHaveValue("email");                  // defaults for billing
+  await expect(page.getByLabel("Channel")).toHaveValue("phone");                  // how it arrived (search = on the phone), not the type
   await expect(page.getByLabel("Owner team")).toHaveValue("customer_service");
 });
 
@@ -577,4 +577,42 @@ test("T37 the result card already shows the contract and the three latest orders
   await expect(page.locator(".card.found li").first()).toContainText("ORD-002-10");
   await search(page, "100021");                                                               // seeded customer with an expired contract
   await expect(page.locator(".card.found").getByText("No active contract")).toBeVisible();
+});
+
+const field = (page: Page, label: string) => page.locator(".row", { hasText: label });
+
+test("T38 phone path: channel, priority and status are already filled when Review details opens; the type completes the rest", async ({ page }) => {
+  await openApp(page);
+  await search(page, "100009");
+  await selectFirst(page);
+  await expect(page.getByLabel("Channel")).toHaveValue("phone");                                   // the customer is on the phone
+  await expect(field(page, "Channel")).toContainText("Default");
+  await expect(page.getByLabel("Priority")).toHaveValue("normal");
+  await expect(field(page, "Priority")).toContainText("Default");
+  await expect(page.getByLabel("Owner team")).toHaveValue("");                                      // genuinely depends on the type
+  await expect(page.getByText("Choose the complaint type: it fills in the owner team and the response target.")).toBeVisible();
+  const order = await page.locator(".row label").allInnerTexts();
+  expect(order.indexOf("Complaint type")).toBeLessThan(order.indexOf("Site"));                      // the one field to choose comes first
+
+  await page.getByLabel("Complaint type").selectOption("billing");                                  // choosing it completes the defaults
+  await expect(page.getByLabel("Owner team")).toHaveValue("customer_service");
+  await expect(field(page, "Owner team")).toContainText("Default");
+  await expect(page.getByLabel("Channel")).toHaveValue("phone");                                    // the channel is about this call
+  await expect(page.getByText("Choose the complaint type: it fills in the owner team and the response target.")).toHaveCount(0);
+});
+
+test("T39 email path: channel is email and the type is already suggested, so every default is filled", async ({ page }) => {
+  await openApp(page);
+  await page.getByText("Start from an email").click();
+  await page.getByLabel("Pasted email").fill("Subject: Klacht\n\nOnze container BOX-009-1 is vandaag niet geleegd. Klantnummer 100009.");
+  await page.getByRole("button", { name: "Extract from email" }).click();
+  await expect(page.getByText("Customer found")).toBeVisible();
+  await selectFirst(page);
+  await expect(page.getByLabel("Channel")).toHaveValue("email");
+  await expect(field(page, "Channel")).toContainText("Default");
+  await expect(page.getByLabel("Complaint type")).toHaveValue("service");                           // guessed from the email text
+  await expect(field(page, "Complaint type")).toContainText("Suggested");
+  await expect(page.getByLabel("Owner team")).toHaveValue("operations");                            // the type's defaults came with it
+  await expect(page.getByLabel("Priority")).toHaveValue("normal");
+  await expect(page.getByText("Choose the complaint type: it fills in the owner team and the response target.")).toHaveCount(0);
 });

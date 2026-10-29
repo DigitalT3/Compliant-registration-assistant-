@@ -85,6 +85,7 @@ export default function Register({ onViewHistory, meName, config }: { onViewHist
   }, []);
 
   const val = (k: string) => s.fields[k]?.value || "";
+  const origin = s.emailNote?.x ? "email" : "search";      // how the complaint arrived: sets the channel default (phone vs email)
   const label = (o: any) => (o ? o[lang] || o.en : "");
   const causes: any[] = config?.root_causes || [];
   const cause = causes.find((c) => c.id === s.rootCause);
@@ -140,18 +141,21 @@ export default function Register({ onViewHistory, meName, config }: { onViewHist
     if (r.ai_status !== "ok") { set({ emailNote: { failed: r.error_category || "unavailable" } }); return; }
     const x = r.result, v = x.validation || {};
     const q = (v.customer_number && x.customer_number) || (v.order_reference && x.order_reference) || (v.container && x.container) || "";
-    set({ text: x.description, textLang: x.language, emailNote: { x, q }, q: q || s.q, search: q ? await get("/api/customers/search", { q }) : null });
+    const guess: Record<string, { value: string; provenance: string }> = x.complaint_type ? { complaint_type: { value: x.complaint_type, provenance: "suggested" } } : {};   // confident guess from the text
+    set({ text: x.description, textLang: x.language, emailNote: { x, q }, q: q || s.q, fields: { ...s.fields, ...guess },
+          search: q ? await get("/api/customers/search", { q }) : null });
   });
 
   const selectCandidate = (c: any) => run(async () => {
     const sid = s.sessionId || (await post("/api/sessions", { scenario: s.scenarioTag || null, mode: s.mode, participant_id: s.participant || null })).session_id;
     const ctx = await get(`/api/customers/${c.customer_id}/context`);
-    const pf = await post("/api/prefill", {
+    const pf = await post("/api/prefill", { origin,
       customer_id: c.customer_id, site_id: c.matched_site_id, order_id: c.matched_order_id,
       complaint_type: s.fields.complaint_type?.value, session_id: sid,
     });
     sessionStorage.setItem("cra.currentCustomer", c.customer_id);
-    set({ sessionId: sid, customerId: c.customer_id, ctx, fields: pf.fields, step: 1, search: null });
+    const suggested = s.fields.complaint_type?.provenance === "suggested" ? { complaint_type: s.fields.complaint_type } : {};   // guessed from the email
+    set({ sessionId: sid, customerId: c.customer_id, ctx, fields: { ...pf.fields, ...suggested }, step: 1, search: null });
     post(`/api/sessions/${sid}/events`, { type: "step_entered", step: "review_details" }).catch(() => undefined);
   });
 
@@ -161,7 +165,7 @@ export default function Register({ onViewHistory, meName, config }: { onViewHist
 
   // Choosing a type (by the user or accepting the AI suggestion) applies that type's defaults.
   const applyType = async (v: string, provenance: "manual" | "suggested") => {
-    const pf = await post("/api/prefill", {
+    const pf = await post("/api/prefill", { origin,
       customer_id: s.customerId, site_id: val("site_id") || null, order_id: val("order_id") || null, complaint_type: v,
       current_fields: keepManual(["complaint_type"]),
     });
@@ -172,7 +176,7 @@ export default function Register({ onViewHistory, meName, config }: { onViewHist
   // A newly chosen site pulls in its contract, most recent order and container.
   const changeSite = (v: string) => run(async () => {
     const prev = s.fields.site_id?.provenance;
-    const pf = await post("/api/prefill", {
+    const pf = await post("/api/prefill", { origin,
       customer_id: s.customerId, site_id: v || null, order_id: null, complaint_type: val("complaint_type") || null,
       current_fields: keepManual(["site_id", "contract_id", "order_id", "container"]),
     });
@@ -192,7 +196,7 @@ export default function Register({ onViewHistory, meName, config }: { onViewHist
 
   // A contract or order belongs to one site: picking one from another site switches the site too and re-prefills around it.
   const pickRelated = (rowSite: string, extra: { contract_id?: string; order_id?: string }) => run(async () => {
-    const pf = await post("/api/prefill", {
+    const pf = await post("/api/prefill", { origin,
       customer_id: s.customerId, site_id: rowSite, order_id: extra.order_id ?? null, complaint_type: val("complaint_type") || null,
       current_fields: keepManual(["site_id", "contract_id", "order_id", "container"]),
     });
@@ -306,8 +310,8 @@ export default function Register({ onViewHistory, meName, config }: { onViewHist
     </select>
   );
   const opts = config?.field_options || {};
-  const row = (k: string, input: JSX.Element) => (
-    <div className="row"><label htmlFor={k}>{t(`f.${k}`)}</label>{input}<Prov p={s.fields[k]?.provenance || "blank"} /></div>
+  const row = (k: string, input: JSX.Element, needsInput = false) => (
+    <div className={needsInput ? "row needs-input" : "row"}><label htmlFor={k}>{t(`f.${k}`)}</label>{input}<Prov p={s.fields[k]?.provenance || "blank"} /></div>
   );
 
   return (
@@ -407,6 +411,13 @@ export default function Register({ onViewHistory, meName, config }: { onViewHist
           <div>
             {row("customer_name", <span>{val("customer_name")}</span>)}
             {row("customer_number", <span>{val("customer_number")}</span>)}
+            {row("complaint_type", (
+              <select id="complaint_type" value={val("complaint_type")} onChange={(e) => changeType(e.target.value)}>
+                <option value="">{t("choose")}</option>
+                {(config?.types || []).map((x: any) => <option key={x.id} value={x.id}>{label(x)}</option>)}
+              </select>
+            ), !val("complaint_type"))}
+            {!val("complaint_type") && <p className="hint-row">{t("review.type_hint")}</p>}
             {row("site_id", (
               <select id="site_id" value={val("site_id")} onChange={(e) => changeSite(e.target.value)}>
                 <option value="">{t("choose")}</option>
@@ -422,12 +433,6 @@ export default function Register({ onViewHistory, meName, config }: { onViewHist
             ))}
             {row("container", <span>{val("container") || "–"}</span>)}
             {row("channel", optionSelect("channel", opts.channel || []))}
-            {row("complaint_type", (
-              <select id="complaint_type" value={val("complaint_type")} onChange={(e) => changeType(e.target.value)}>
-                <option value="">{t("choose")}</option>
-                {(config?.types || []).map((x: any) => <option key={x.id} value={x.id}>{label(x)}</option>)}
-              </select>
-            ))}
             {row("priority", optionSelect("priority", opts.priority || []))}
             {row("owner_team", optionSelect("owner_team", opts.owner_team || []))}
             {row("status", <span>{val("status") || "–"}</span>)}

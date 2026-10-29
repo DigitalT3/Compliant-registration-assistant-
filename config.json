@@ -107,7 +107,8 @@
   },
   "defaults": {
     "_all": {
-      "status": "open"
+      "status": "open",
+      "priority": "normal"
     },
     "service": {
       "channel": "phone",
@@ -460,6 +461,10 @@
     "auth_functions": {
       "status": "TO CONFIRM",
       "note": "Function categories come from the PRD (customer service, sales, site operations; TO CONFIRM with Renewi)."
+    },
+    "origin_defaults": {
+      "status": "TO CONFIRM",
+      "note": "Default channel by how the complaint arrives: phone when the employee searches (customer on the phone), email when started from a pasted email."
     }
   },
   "root_cause_categories": [
@@ -539,5 +544,9 @@
     "min_password_length": 10,
     "max_failed_logins": 5,
     "lockout_minutes": 15
+  },
+  "origin_defaults": {
+    "search": "phone",
+    "email": "email"
   }
 }

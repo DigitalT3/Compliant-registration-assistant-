@@ -40,14 +40,20 @@ def build_prefill(ctx: dict, user: dict, site_id=None, order_id=None) -> dict:
 
 
 # PUBLIC_INTERFACE
-def apply_defaults(complaint_type: str | None, current: dict | None) -> dict:
+def apply_defaults(complaint_type: str | None, current: dict | None, origin: str | None = None) -> dict:
     """Apply configured defaults (``_all`` plus the type's) to fields that are blank.
 
+    ``origin`` says how the complaint arrived ("search": the customer is on the phone, "email": started from a
+    pasted email); it sets the channel, because that is a fact about this complaint, not about its type.
     Fields with provenance manual/edited, or already holding a value, are never overwritten.
     """
     fields = {k: dict(v) for k, v in (current or {}).items()}
-    defaults = get_config()["defaults"]
+    cfg = get_config()
+    defaults = cfg["defaults"]
     merged = {**defaults.get("_all", {}), **defaults.get(complaint_type or "", {})}
+    by_origin = cfg.get("origin_defaults", {}).get(origin or "")
+    if by_origin:
+        merged["channel"] = by_origin
     for name, value in merged.items():
         cur = fields.get(name)
         if cur and (cur.get("provenance") in ("manual", "edited") or cur.get("value") not in (None, "")):

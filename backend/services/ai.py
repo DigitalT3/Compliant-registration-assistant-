@@ -60,6 +60,7 @@ class ExtractionOut(BaseModel):
     sender_email: Optional[str] = None
     language: str = Field("en", pattern="^(nl|en)$")
     description: str = ""
+    complaint_type: Optional[str] = None   # best guess from the text; must be one of the configured types
 
 
 class AnalyzeOut(BaseModel):
@@ -171,9 +172,12 @@ class MockProvider:
         num, order, box = (re.search(pats[k], t, re.I) for k in ("customer_number", "order_reference", "container"))
         mail = re.search(r"[\w.+-]+@[\w-]+\.[\w.]+", t)
         body = "\n".join(ln for ln in t.splitlines() if not _MAIL_HEADER.match(ln)).strip()
+        guess = self._classify({"text": body or t, "taxonomy": p.get("taxonomy", []), "types": p.get("types", [])})
+        confident = guess["candidates"] and guess["candidates"][0]["confidence"] >= settings.get_config()["classification"]["min_confidence"]
         return {"customer_number": num and num.group(1), "order_reference": order and order.group(1),
                 "container": box and box.group(1), "sender_email": mail and mail.group(0),
-                "language": detect_language(body or t), "description": (body or t.strip())[:2000]}
+                "language": detect_language(body or t), "description": (body or t.strip())[:2000],
+                "complaint_type": guess["complaint_type"] if confident else None}
 
 
 class LiveProvider:
@@ -255,6 +259,8 @@ def run(conn, op: str, payload: dict, session_id: str | None, actor: str) -> dic
                 if any(c.root_cause_id not in ids for c in cls.candidates) or \
                         (cls.complaint_type and cls.complaint_type not in payload["types"]):
                     raise AIError("invalid_output", "unknown taxonomy value")
+            if op == "extract" and result.complaint_type and result.complaint_type not in payload.get("types", []):
+                result.complaint_type = None       # an unknown type is dropped, not trusted
             summ = result if op == "summarise" else getattr(result, "summary", None)
             if summ is not None:   # drop template fields the config does not define
                 allowed = {k for v in payload.get("template_extras_by_type", {}).values() for k in v}

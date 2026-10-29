@@ -16,6 +16,7 @@ class PrefillIn(BaseModel):
     site_id: str | None = None
     order_id: str | None = None
     complaint_type: str | None = None
+    origin: str | None = Field(default=None, pattern="^(search|email)$")   # how the complaint arrived: sets the channel default
     current_fields: dict[str, dict] = Field(default_factory=dict)
     session_id: str | None = None
 
@@ -50,7 +51,7 @@ def do_prefill(body: PrefillIn, user: dict = Depends(require("register"))):
         ctx = lookup.context(conn, body.customer_id)
         fields = prefill.build_prefill(ctx, user, body.site_id, body.order_id)
         fields.update({k: v for k, v in body.current_fields.items() if v.get("provenance") in ("manual", "edited")})
-        fields = prefill.apply_defaults(body.complaint_type, fields)
+        fields = prefill.apply_defaults(body.complaint_type, fields, body.origin)
         if body.session_id:
             sessions.get_open(conn, body.session_id, user)
             for name, f in fields.items():

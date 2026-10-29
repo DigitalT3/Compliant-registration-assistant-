@@ -59,6 +59,10 @@ Employees create an account on the sign-in screen with their name, work e-mail, 
 - **Demo accounts** (the ten fictional users, no password) are **off by default**. Set `POC_DEMO_MODE=1` only for a local demo; never in a shared deployment. The sign-in screen shows "Demo access" only while it is on.
 - This is the PoC's own sign-in, not Renewi single sign-on. It is built so that the token check and login can be replaced by the client's identity provider (e.g. Microsoft Entra ID via OpenID Connect) without changing the screens or permissions. Password reset is done by an administrator (temporary password); there is no self-service e-mail reset yet because the PoC sends no e-mail.
 
+## Defaults on Review details
+
+The step opens with as much filled in as is knowable (PRD step 2). The channel follows how the complaint arrived: **phone** when the employee searched (the customer is on the phone) and **email** when started from a pasted email (`origin_defaults` in `config.json`, TO CONFIRM). Priority and status default for every type. The owner team and response target depend on the complaint type, so **Complaint type** is the first field on the step and is highlighted until chosen; for an email the type is guessed from the text and shown as *Suggested*, so everything is already filled. Values the employee typed are never overwritten, and each field shows where its value came from.
+
 ## Customer data (customers, sites, contracts, orders, containers)
 
 Customers, sites, contracts, orders and containers are synthetic and stand in for Renewi's own systems. For employees and admins the left menu has a **Customer data** group with five pages: **Customers, Sites, Contracts, Orders, Containers**.

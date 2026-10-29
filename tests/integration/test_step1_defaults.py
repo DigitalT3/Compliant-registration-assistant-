@@ -97,3 +97,43 @@ def test_postcode_search(client):
     assert client.get("/api/customers/search", params={"q": "1009"}, headers=EMP).json()["match_type"] == "postcode"
     assert client.get("/api/customers/search", params={"q": "9999ZZ"}, headers=EMP).json()["match_type"] == "none"
     assert client.get("/api/customers/search", params={"q": "999999"}, headers=EMP).json()["match_type"] == "none"
+
+
+# ---- PRD step 2: defaults are already there when the screen opens ----
+
+def _pf(client, **extra):
+    body = {"customer_id": "C009", "site_id": "C009-S1", **extra}
+    return client.post("/api/prefill", headers=EMP, json=body).json()["fields"]
+
+
+def test_defaults_that_do_not_depend_on_the_type_are_there_from_the_start(client):
+    f = _pf(client, origin="search")                          # no complaint type chosen yet
+    assert f["channel"] == {"value": "phone", "provenance": "default"}          # the customer is on the phone
+    assert f["priority"] == {"value": "normal", "provenance": "default"}
+    assert f["status"]["value"] == "open"
+    assert "owner_team" not in f and "complaint_type" not in f                                    # these genuinely depend on the type
+
+
+def test_channel_follows_how_the_complaint_arrived_not_the_type(client):
+    assert _pf(client, origin="email")["channel"]["value"] == "email"
+    assert _pf(client, origin="email", complaint_type="service")["channel"]["value"] == "email"   # type says phone; origin wins
+    assert _pf(client, origin="search", complaint_type="billing")["channel"]["value"] == "phone"  # type says email; origin wins
+    assert "channel" not in _pf(client)                                                          # no origin, no type: nothing is guessed
+    assert _pf(client, complaint_type="billing")["channel"]["value"] == "email"                  # type default still applies without origin
+    assert client.post("/api/prefill", headers=EMP, json={"customer_id": "C009", "origin": "fax"}).status_code == 422
+
+
+def test_choosing_the_type_completes_the_defaults_and_manual_values_stay(client):
+    f = _pf(client, origin="search", complaint_type="service")
+    assert (f["owner_team"]["value"], f["response_target_days"]["value"], f["channel"]["value"]) == ("operations", "2", "phone")
+    typed = {"channel": {"value": "visit", "provenance": "manual"}, "priority": {"value": "high", "provenance": "edited"}}
+    kept = _pf(client, origin="search", complaint_type="billing", current_fields=typed)
+    assert (kept["channel"]["value"], kept["priority"]["value"], kept["owner_team"]["value"]) == ("visit", "high", "customer_service")
+
+
+def test_email_extraction_guesses_the_type_when_confident(client):
+    def x(text):
+        return client.post("/api/complaints/extract", headers=EMP, json={"text": text}).json()["result"]
+    assert x("Onze container BOX-009-1 is vandaag niet geleegd. Klantnummer 100009.")["complaint_type"] == "service"
+    assert x("We were charged twice on invoice 20431, the invoice amount is wrong.")["complaint_type"] == "billing"
+    assert x("Hello, please call me back about something.")["complaint_type"] is None            # not confident: no guess

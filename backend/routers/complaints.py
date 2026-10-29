@@ -81,7 +81,9 @@ class ComplaintIn(BaseModel):
 def extract(body: ExtractIn, user: dict = Depends(require("register"))):
     """Return extraction candidates, each flagged as validated against the customer DB or uncertain."""
     with connection() as conn:
-        out = ai.run(conn, "extract", {"text": body.text}, body.session_id, user["id"])
+        cfg = get_config()
+        out = ai.run(conn, "extract", {"text": body.text, "taxonomy": cfg["root_causes"], "types": [t["id"] for t in cfg["types"]]},
+                     body.session_id, user["id"])
         if out["ai_status"] == "ok":
             r = out["result"]
             r["validation"] = {

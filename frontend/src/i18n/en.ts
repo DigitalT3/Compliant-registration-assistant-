@@ -346,5 +346,6 @@ export const en: Record<string, string> = {
   "search.recent": "Recent orders",
   "search.valid_to": "valid to {date}",
   "search.no_active_contract": "No active contract",
-  "search.expired": "expired {date}"
+  "search.expired": "expired {date}",
+  "review.type_hint": "Choose the complaint type: it fills in the owner team and the response target."
 };
