@@ -181,6 +181,26 @@ def targets(conn, out: dict) -> list:
             for i, label, v, n, ok in rows]
 
 
+OUTCOMES = {"prefilled": "accepted", "default": "accepted", "suggested": "accepted", "edited": "changed",
+            "manual": "typed", "blank": "empty"}
+
+
+# PUBLIC_INTERFACE
+def suggestion_rows(conn, f: dict) -> list:
+    """One row per tracked field of every saved complaint: team, field, origin and accepted / changed / typed / empty.
+
+    Accepted = the value the assistant (or the customer data) supplied was kept; changed = the employee edited it;
+    typed = the employee entered it without a suggestion; empty = left blank.
+    """
+    w, a = _where(f)
+    rows = conn.execute(
+        "SELECT c.id complaint_id,s.id session_id,s.user_group team,s.actor,s.mode,c.created saved_at,"
+        "e.field,e.origin FROM field_events e JOIN sessions s ON s.id=e.session_id "
+        f"JOIN complaints c ON c.session_id=s.id WHERE e.event_type='final' AND s.status='saved' AND {w} "
+        "ORDER BY c.created,c.id,e.id", a).fetchall()
+    return [{**dict(r), "outcome": OUTCOMES.get(r["origin"], "empty")} for r in rows]
+
+
 # PUBLIC_INTERFACE
 def session_list(conn, f: dict, page: int, size: int) -> dict:
     """Paginated per-session records with derived durations."""

@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 from .. import db
 from ..auth import require
 from ..dbutil import audit, connection
-from ..services import metrics, sessions as sessions_svc
+from ..services import metrics, scope, sessions as sessions_svc
 
 router = APIRouter(tags=["user-test"])
 
@@ -44,6 +44,7 @@ def add_baseline(body: BaselineIn, user: dict = Depends(require("evaluate"))):
 
 @router.get("/api/baseline", summary="Baseline timings")
 def list_baseline(user: dict = Depends(require("analytics"))):
+    scope.not_for_leads(user)
     """All baseline rows with the mean per user group."""
     with connection() as conn:
         rows = [dict(r) for r in conn.execute("SELECT * FROM baseline ORDER BY id DESC")]
@@ -66,6 +67,7 @@ def add_exit(body: ExitIn, user: dict = Depends(require("evaluate"))):
 
 @router.get("/api/exit-interviews", summary="Exit interviews")
 def list_exit(user: dict = Depends(require("analytics"))):
+    scope.not_for_leads(user)
     """All exit interviews and the daily-use count."""
     with connection() as conn:
         rows = [dict(r) for r in conn.execute("SELECT * FROM exit_interviews ORDER BY id DESC")]
@@ -112,13 +114,29 @@ def export_sessions(mode: str | None = Query(None, pattern="^(assistant|plain)$"
                     user: dict = Depends(require("analytics"))):
     """One row per session: who, group, mode, participant, scenario, outcome, duration and seconds per step."""
     steps = sessions_svc.STEPS
+    f = scope.scoped(user, {"mode": mode, "group": group})
     with connection() as conn:
-        data = metrics.session_list(conn, {"mode": mode, "group": group}, 1, 100000)
+        data = metrics.session_list(conn, f, 1, 100000)
     rows = [[i["id"], i["actor"], i["user_group"], i["mode"], i["participant_id"], i["scenario"], i["status"],
              i["duration_seconds"], i["root_cause"], i["repeat_detected"], i["failure_status"]]
             + [i["step_seconds"].get(s) for s in steps] for i in data["items"]]
     return _csv(["session_id", "user", "group", "mode", "participant", "scenario", "status", "duration_s", "root_cause",
                  "repeat", "failure"] + [f"{s}_s" for s in steps], rows, "sessions.csv")
+
+
+@router.get("/api/export/suggestions.csv", summary="Every tracked field of every saved complaint, for Power BI")
+def export_suggestions(mode: str | None = Query(None, pattern="^(assistant|plain)$"), group: str | None = None,
+                       user: dict = Depends(require("analytics"))):
+    """One row per field per saved complaint: team, field, origin and accepted / changed / typed / empty.
+
+    A team lead gets their own team's rows only; administrators and evaluators get all teams.
+    """
+    f = scope.scoped(user, {"mode": mode, "group": group})
+    with connection() as conn:
+        items = metrics.suggestion_rows(conn, f)
+    return _csv(["complaint_id", "session_id", "team", "user", "mode", "saved_at", "field", "origin", "outcome"],
+                [[i["complaint_id"], i["session_id"], i["team"], i["actor"], i["mode"], i["saved_at"], i["field"],
+                  i["origin"], i["outcome"]] for i in items], "suggestions.csv")
 
 
 @router.get("/api/export/labels-sample.csv", summary="Blind labelling sample as CSV")

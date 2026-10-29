@@ -247,32 +247,37 @@ function Dashboard() {
   const { t } = useI18n();
   const [summary, setSummary] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
+  const [noTeam, setNoTeam] = useState(false);
   const [groupBy, setGroupBy] = useState("group");
   const [mode, setMode] = useState("");
+  const team: string | undefined = summary?.scope?.team;   // set for a team lead: the dashboard shows that team only
 
   useEffect(() => {
     get("/api/analytics/summary", { group_by: groupBy, mode })
-      .then((r) => { setSummary(r); setError(null); })
-      .catch((cause) => setError(cause instanceof ApiError ? cause.message : String(cause)));
+      .then((r) => { setSummary(r); setError(null); setNoTeam(false); if (r.scope && groupBy === "group") setGroupBy("mode"); })
+      .catch((cause) => { setNoTeam(cause instanceof ApiError && cause.code === "team_required"); setError(cause instanceof ApiError ? cause.message : String(cause)); });
   }, [groupBy, mode]);
 
   const filters = (
     <div className="inline">
       <label>{t("dash.group_by")}
         <select value={groupBy} onChange={(e) => setGroupBy(e.target.value)}>
-          {["group", "mode", "scenario", "participant"].map((g) => <option key={g} value={g}>{t(`dash.by.${g}`)}</option>)}
+          {(team ? ["mode", "scenario", "participant"] : ["group", "mode", "scenario", "participant"]).map((g) => <option key={g} value={g}>{t(`dash.by.${g}`)}</option>)}
         </select></label>
       <label>{t("dash.mode")}
         <select value={mode} onChange={(e) => setMode(e.target.value)}>
           <option value="">{t("dash.all")}</option><option value="assistant">{t("mode.assistant")}</option><option value="plain">{t("mode.plain")}</option>
         </select></label>
       <button className="secondary" onClick={() => download("/api/export/sessions.csv", "sessions.csv", { mode }).catch((c) => setError(String(c.message || c)))}>{t("dash.export")}</button>
+      <button className="secondary" onClick={() => download("/api/export/suggestions.csv", "suggestions.csv", { mode }).catch((c) => setError(String(c.message || c)))}>{t("dash.export_suggestions")}</button>
     </div>
   );
+  const teamBanner = team && <p className="badge prov-prefilled" role="status">{t("dash.team", { team: team.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase()) })}</p>;
 
+  if (noTeam) return <section><h2>{t("dash.title")}</h2><p className="warn" role="alert">{error}</p></section>;
   if (error) return <section><h2>{t("dash.title")}</h2><p className="warn">{t("dash.forbidden")}</p><ErrorMessage error={error} /></section>;
   if (!summary) return <section><h2>{t("dash.title")}</h2><p>{t("loading")}</p></section>;
-  if (summary.empty) return <section><h2>{t("dash.title")}</h2>{filters}<p className="empty">{t("dash.empty")}</p></section>;
+  if (summary.empty) return <section><h2>{t("dash.title")}</h2>{teamBanner}{filters}<p className="empty">{t("dash.empty")}</p></section>;
 
   const rates = [
     ["Save", summary.sessions.save_rate],
@@ -290,6 +295,7 @@ function Dashboard() {
   return (
     <section>
       <h2>{t("dash.title")}</h2>
+      {teamBanner}
       <p className="muted">{summary.definitions.synthetic}</p>
       {filters}
       <div className="metric-grid">

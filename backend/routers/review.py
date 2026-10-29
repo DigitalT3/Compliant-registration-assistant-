@@ -9,6 +9,7 @@ from .. import db
 from ..auth import require
 from ..dbutil import audit, connection
 from ..errors import ApiError
+from ..services import scope
 
 router = APIRouter(tags=["review"])
 
@@ -81,8 +82,13 @@ def list_evals(user: dict = Depends(require("evaluate"))):
 def other_reasons(user: dict = Depends(require("analytics"))):
     """Group stored 'Other' reasons by normalised text. Exact-text grouping on synthetic data only;
     not a taxonomy-improvement analysis (FR-18..FR-20 remain later-phase)."""
+    team = scope.lead_team(user)
+    sql = "SELECT c.other_reason FROM complaints c WHERE c.root_cause='other' AND c.other_reason IS NOT NULL"
+    args: tuple = ()
+    if team:   # a team lead sees only their team's complaints
+        sql += " AND c.session_id IN (SELECT id FROM sessions WHERE user_group=?)"
+        args = (team,)
     with connection() as conn:
-        c = Counter((r[0] or "").strip().lower() for r in conn.execute(
-            "SELECT other_reason FROM complaints WHERE root_cause='other' AND other_reason IS NOT NULL"))
+        c = Counter((r[0] or "").strip().lower() for r in conn.execute(sql, args))
     return {"synthetic": True, "later_phase": True, "n": sum(c.values()),
             "groups": [{"reason": k, "count": v} for k, v in c.most_common()]}

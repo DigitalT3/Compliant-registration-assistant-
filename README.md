@@ -6,7 +6,7 @@ This repository contains a standalone, desktop-first complaint-registration demo
 
 The React/Vite frontend provides a Dutch and English six-step workflow: customer lookup (customer number, order, container, name or postcode, or a pasted email), detail review, complaint description, one AI analysis call (summary, type and top-three causes), repeat checking with confirm/dispute, and PoC-only save. The FastAPI backend provides synthetic lookup and context, configurable per-type defaults with provenance, a two-level root-cause taxonomy, deterministic repeat detection, complaint persistence, session events, audit events, demo roles, and OpenAPI documentation.
 
-For the user test it also records test sessions (participant, scenario, assistant or plain-form mode), baseline stopwatch timings, exit interviews and blind expert labelling, and the dashboard evaluates each PRD target with its sample size and exports CSV.
+For the user test it also records test sessions (participant, scenario, assistant or plain-form mode), baseline stopwatch timings, exit interviews and blind expert labelling, and the dashboard evaluates each PRD target with its sample size and exports CSV (per-session timings and `suggestions.csv`, one row per field with accepted / changed / typed / empty, for Power BI). A team lead's account carries the team they lead and sees only that team on the dashboard and in the exports; admins and evaluators see all teams. Step times count at most 10 minutes per visit (`metrics.step_idle_cap_seconds`).
 
 AI behaviour is mock by default. The mock provider is explicitly labelled in the UI and API; it is deterministic and intended for offline demonstration, not as evidence of live-model quality.
 
@@ -45,7 +45,7 @@ Open `http://127.0.0.1:5173`. The API health response is at `http://127.0.0.1:80
 
 ## Accounts and sign-in
 
-Employees create an account on the sign-in screen with their name, work e-mail, password and **function** (customer service, sales or site operations; TO CONFIRM with Renewi). A new account is **pending** until an administrator approves it on the **Users** screen; self-registered people are always employees and cannot choose a role. After sign-in each role lands on its own first screen and only sees the menu items it may use (employee: Register, History; team lead: Dashboard; evaluator: Evaluation; admin: Users and Configuration).
+Employees create an account on the sign-in screen with their name, work e-mail, password and **function** (customer service, sales or site operations; TO CONFIRM with Renewi). A new account is **pending** until an administrator approves it on the **Users** screen; self-registered people are always employees and cannot choose a role. After sign-in each role lands on its own first screen and only sees the menu items it may use (employee: Register, History; team lead: Dashboard, limited to the team they lead; evaluator: Evaluation; admin: Users and Configuration).
 
 - Passwords are stored as salted scrypt hashes. Sign-in uses signed, expiring tokens (8 hours, kept in session storage); five wrong passwords lock the account for 15 minutes. Roles are read from the database on every request, and sign-ins, failures and role changes are in the audit trail.
 - Settings are in `config.json` under `auth` (functions, approval on/off, allowed e-mail domains, password length, lockout).

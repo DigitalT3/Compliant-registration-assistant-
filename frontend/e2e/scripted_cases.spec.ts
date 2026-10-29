@@ -661,3 +661,91 @@ test("T42 an order picked after the summary was made fills the empty container n
   await expect(page.getByLabel("Container no.")).toHaveValue("BOX-009-1");
   await expect(page.locator(".row", { hasText: "Container no." }).getByText("Prefilled")).toBeVisible();
 });
+
+test("T43 the admin must choose the team a lead leads", async ({ page }) => {
+  await openApp(page, "demo.admin");
+  await expect(page.getByRole("heading", { name: "Users" })).toBeVisible();
+  const form = page.locator("form.card");
+  const field = (name: string) => form.locator("label").filter({ hasText: new RegExp(`^${name}`) }).locator("select");
+  await page.getByLabel("Full name").fill("Anna Lead");
+  await page.getByLabel("E-mail", { exact: true }).fill("anna.lead@example.nl");
+  await expect(form.locator("label").filter({ hasText: /^Function/ })).toBeVisible();                          // employees: a plain function
+  await field("Role").selectOption("lead");
+  await expect(form.locator("label").filter({ hasText: /^Team led/ })).toBeVisible();                          // leads: the team they lead
+  await expect(page.getByRole("button", { name: "Create account" })).toBeDisabled();               // no team yet
+  await field("Team led").selectOption({ label: "Sales" });
+  await expect(page.getByRole("button", { name: "Create account" })).toBeEnabled();
+  await page.getByRole("button", { name: "Create account" }).click();
+  await expect(page.getByText("Temporary password for Anna Lead")).toBeVisible();
+  await expect(page.getByLabel("Team led Anna Lead")).toHaveValue("sales");                       // editable in the list
+});
+
+test("T44 a team lead sees one team: banner, no 'group by user group', suggestions export", async ({ page }) => {
+  await openApp(page, "demo.lead");
+  await page.getByRole("button", { name: "Dashboard" }).click();
+  await expect(page.getByRole("status").filter({ hasText: "Team: Group a" })).toBeVisible();
+  const options = await page.getByLabel("Group by").locator("option").allTextContents();
+  expect(options).not.toContain("User group");
+  await expect(page.getByRole("button", { name: /Export suggestions CSV/ })).toBeVisible();
+  await openApp(page, "demo.admin");                                                              // admins are not limited
+  await page.getByRole("button", { name: "Dashboard" }).click();
+  await expect(page.getByLabel("Group by").locator("option", { hasText: "User group" })).toHaveCount(1);
+  await expect(page.getByText(/^Team: /)).toHaveCount(0);
+});
+
+test("T45 the summary and the cause are recorded as accepted when left alone and as changed when edited", async ({ page, request }) => {
+  const outcomes = async (id: string) => {
+    const csv = await (await request.get(`${API}/api/export/suggestions.csv`, { headers: { "X-Demo-User": "demo.admin" } })).text();
+    const rows = csv.trim().split(/\r?\n/).map((l) => l.split(","));
+    return Object.fromEntries(rows.filter((r) => r[0] === id).map((r) => [r[6], r[8]]));
+  };
+  const run = async (edit: boolean) => {
+    await openApp(page);
+    await search(page, "100009");
+    await selectFirst(page);
+    await page.getByLabel("Site", { exact: true }).selectOption("C009-S1");
+    await describe(page, "The container at our depot was not emptied on Tuesday, it was missed again.", "en");
+    await expect(page.getByRole("radio", { name: /Missed collection/ }).first()).toBeChecked();
+    if (edit) {
+      await page.getByLabel("What", { exact: true }).fill("Edited by the employee");
+      await page.getByRole("radio", { name: /Late collection/ }).first().check();
+    }
+    await next(page);
+    await save(page).click();
+    await saved(page);
+    return (await page.getByRole("status").innerText()).match(/POC-\d+/)![0];
+  };
+  const kept = await outcomes(await run(false));
+  expect(kept).toMatchObject({ summary: "accepted", root_cause: "accepted", description: "typed" });
+  const changed = await outcomes(await run(true));
+  expect(changed).toMatchObject({ summary: "changed", root_cause: "changed" });
+});
+
+test("T46 a real team lead signs in with their own password and sees only their team", async ({ page, request }) => {
+  const create = async (name: string, email: string, fn: string, role: string) =>
+    (await (await request.post(`${API}/api/users`, { headers: ADMIN, data: { name, email, function: fn, role } })).json()).temporary_password as string;
+  const ownPassword = async (email: string, temp: string) => {                                    // first sign-in: choose a password
+    const first = await (await request.post(`${API}/api/auth/login`, { data: { email, password: temp } })).json();
+    const done = await (await request.post(`${API}/api/auth/change-password`, { headers: { Authorization: `Bearer ${first.token}` }, data: { current_password: temp, new_password: "own-password-12345" } })).json();
+    return { Authorization: `Bearer ${done.token}` };
+  };
+  const sanne = await ownPassword("sanne.sales@example.nl", await create("Sanne Sales", "sanne.sales@example.nl", "sales", "employee"));
+  const karel = await ownPassword("karel.klant@example.nl", await create("Karel Klant", "karel.klant@example.nl", "customer_service", "employee"));
+  const leadTemp = await create("Lotte Lead", "lotte.lead@example.nl", "sales", "lead");
+  for (const h of [sanne, karel]) expect((await request.post(`${API}/api/sessions`, { headers: h, data: {} })).ok()).toBe(true);
+
+  await openSignedOut(page);                                                                     // the real sign-in screen
+  await page.getByLabel("Work e-mail address").fill("lotte.lead@example.nl");
+  await page.getByLabel("Password", { exact: true }).fill(leadTemp);
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Choose a new password" })).toBeVisible();
+  await page.getByLabel("Current password").fill(leadTemp);
+  await page.getByLabel("New password", { exact: true }).fill("lotte-own-password-1");
+  await page.getByLabel("Repeat new password").fill("lotte-own-password-1");
+  await page.getByRole("button", { name: "Save password" }).click();
+  await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();                  // a lead lands on the dashboard
+  await expect(page.getByRole("status").filter({ hasText: "Team: Sales" })).toBeVisible();       // only the team they lead
+  await expect(page.getByLabel("Group by").locator("option", { hasText: "User group" })).toHaveCount(0);
+  const menu = page.getByRole("navigation", { name: "Main navigation" });
+  await expect(menu.getByRole("button", { name: "Register" })).toHaveCount(0);                   // leads do not register
+});

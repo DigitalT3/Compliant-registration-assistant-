@@ -26,6 +26,7 @@ interface State {
   text: string;
   textLang: string;
   summary: any | null;
+  aiSummary: any | null;   // the summary as the assistant produced it: what "edited" is measured against
   summaryFailed: string | null;
   analysedText: string;
   email: string;
@@ -45,7 +46,7 @@ interface State {
 }
 
 const init: State = {
-  step: 0, q: "", search: null, customerId: null, ctx: null, fields: {}, text: "", textLang: "auto", summary: null,
+  step: 0, q: "", search: null, customerId: null, ctx: null, fields: {}, text: "", textLang: "auto", summary: null, aiSummary: null,
   summaryFailed: null, analysedText: "", email: "", participant: "", scenarioTag: "", mode: "assistant", emailNote: null, decisions: {}, cls: null, clsFailed: null, rootCause: "", causeOrigin: "manual", otherReason: "", repeat: null, sessionId: null, saved: null,
 };
 
@@ -234,7 +235,8 @@ export default function Register({ onViewHistory, meName, config }: { onViewHist
     });
     if (r.ai_status === "ok") {
       const { summary, classification } = r.result;
-      set({ summary: { ...summary, mock: r.mock, context_extras: r.context_extras || [] }, summaryFailed: null, cls: { ...r, result: classification }, clsFailed: null,
+      const shown = { ...summary, mock: r.mock, context_extras: r.context_extras || [] };
+      set({ summary: shown, aiSummary: shown, summaryFailed: null, cls: { ...r, result: classification }, clsFailed: null,
             rootCause: r.preselect || "", causeOrigin: r.preselect ? "suggested" : "manual", analysedText: s.text });
       if (classification.complaint_type && !val("complaint_type")) await applyType(classification.complaint_type, "suggested");
     } else {
@@ -249,7 +251,10 @@ export default function Register({ onViewHistory, meName, config }: { onViewHist
     if (s.text.trim() && s.summary) {
       const r = await post("/api/complaints/summarise", { text: s.text, language: s.textLang === "auto" ? null : s.textLang,
         site_id: val("site_id") || null, complaint_type: v, container: val("container") || null, session_id: s.sessionId });
-      if (r.ai_status === "ok") set({ summary: { ...s.summary, extras: r.result.extras, context_extras: r.context_extras || [] } });
+      if (r.ai_status === "ok") {
+        const patch = { extras: r.result.extras, context_extras: r.context_extras || [] };
+        set({ summary: { ...s.summary, ...patch }, aiSummary: s.aiSummary && { ...s.aiSummary, ...patch } });
+      }
     }
   });
 
@@ -273,13 +278,30 @@ export default function Register({ onViewHistory, meName, config }: { onViewHist
   ].filter(([, v]) => !String(v || "").trim()).map(([k]) => k);
 
   // Origin of each tracked field at save time; drives the prefill-rate metric (PRD: prefilled or defaulted).
+  // "Accepted or changed": the cause is accepted when the top suggestion was kept, changed when another one (or any
+  // other cause) was chosen; the summary is accepted when the assistant's text was left alone, changed when it was edited.
+  const causeOutcome = () => {
+    const top = s.cls?.result?.candidates?.[0]?.root_cause_id;
+    return !s.rootCause ? "blank" : !top ? "manual" : s.rootCause === top ? "suggested" : "edited";
+  };
+  const summaryOutcome = () => {
+    const sm = s.summary, ai = s.aiSummary, norm = (v: any) => String(v ?? "").trim();
+    const keys = ["what", "where", "when", "impact"];
+    if (!sm || !(keys.some((k) => norm(sm[k])) || Object.values(sm.extras || {}).some((v) => norm(v)))) return "blank";
+    if (!ai) return "manual";                                   // typed by hand: no assistant text to accept
+    const skip = new Set(sm.context_extras || []);              // filled from the chosen order, not by the model
+    const extra = new Set([...Object.keys(sm.extras || {}), ...Object.keys(ai.extras || {})].filter((k) => !skip.has(k)));
+    const changed = keys.some((k) => norm(sm[k]) !== norm(ai[k])) ||
+      [...extra].some((k) => norm(sm.extras?.[k]) !== norm(ai.extras?.[k]));
+    return changed ? "edited" : "suggested";
+  };
   const finalProvenance = () => {
     const p: Record<string, string> = {};
     for (const k of ["customer_id", "site_id", "contract_id", "order_id", "container", "channel", "registration_date",
       "registering_user", "priority", "status", "owner_team", "complaint_type"]) p[k] = s.fields[k]?.provenance || "blank";
-    p.root_cause = s.rootCause ? s.causeOrigin : "blank";
+    p.root_cause = causeOutcome();
     p.description = s.text ? "manual" : "blank";
-    p.summary = s.summary ? "suggested" : "blank";
+    p.summary = summaryOutcome();
     return p;
   };
 

@@ -75,8 +75,8 @@ export default function Users({ config, meId }: { config: any; meId: string }) {
         <div className="inline">
           <label>{t("auth.name")}<input required maxLength={80} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></label>
           <label>{t("users.col.email")}<input type="email" required value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></label>
-          <label>{t("users.col.function")}
-            <select value={form.function} onChange={(e) => setForm({ ...form, function: e.target.value })}>
+          <label>{form.role === "lead" ? t("users.team_led") : t("users.col.function")}
+            <select required={form.role === "lead"} value={form.function} onChange={(e) => setForm({ ...form, function: e.target.value })}>
               <option value="">{t("users.no_function")}</option>
               {(opts?.functions || []).map((x: any) => <option key={x.id} value={x.id}>{x[lang]}</option>)}
             </select></label>
@@ -84,7 +84,7 @@ export default function Users({ config, meId }: { config: any; meId: string }) {
             <select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
               {roles.map((r) => <option key={r} value={r}>{r}</option>)}
             </select></label>
-          <button disabled={!form.name || !form.email || !!busy}>{busy === "new:add" ? t("saving") : t("users.add.btn")}</button>
+          <button disabled={!form.name || !form.email || (form.role === "lead" && !form.function) || !!busy}>{busy === "new:add" ? t("saving") : t("users.add.btn")}</button>
         </div>
       </form>
       {!loaded && !error && <p className="muted" role="status">{t("loading")}</p>}
@@ -111,7 +111,13 @@ export default function Users({ config, meId }: { config: any; meId: string }) {
           <tbody>
             {items.map((u) => (
               <tr key={u.id}>
-                <td>{u.name}</td><td>{u.email || "–"}</td><td>{fn(u.function)}</td>
+                <td>{u.name}</td><td>{u.email || "–"}</td>
+                <td>{u.role === "lead"
+                  ? <select aria-label={`${t("users.team_led")} ${u.name}`} value={u.function || ""} disabled={!!busy} onChange={(e) => e.target.value && patch(u.id, { function: e.target.value })}>
+                      {!u.function && <option value="">{t("users.no_function")}</option>}
+                      {(opts?.functions || []).map((x: any) => <option key={x.id} value={x.id}>{x[lang]}</option>)}
+                    </select>
+                  : fn(u.function)}</td>
                 <td>
                   <select aria-label={`${t("users.col.role")} ${u.name}`} value={u.role} disabled={!!busy} onChange={(e) => patch(u.id, { role: e.target.value })}>
                     {roles.map((r) => <option key={r} value={r}>{r}</option>)}

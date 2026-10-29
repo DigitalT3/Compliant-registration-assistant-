@@ -104,15 +104,22 @@ def sweep_abandoned(conn) -> int:
 
 
 # PUBLIC_INTERFACE
-def step_durations(events: list, ended: str | None) -> dict:
-    """Seconds per step derived from recorded timestamps (entered to completed/next entered/end)."""
+def step_durations(events: list, ended: str | None, cap: float | None = None) -> dict:
+    """Seconds per step derived from recorded timestamps (entered to completed/next entered/end).
+
+    Each visit to a step counts at most ``cap`` seconds (default ``metrics.step_idle_cap_seconds``), so a
+    browser tab left open overnight does not turn one step into hours.
+    """
+    if cap is None:
+        cap = settings.get_config()["metrics"].get("step_idle_cap_seconds")
     out, cur = {}, None
 
     def close_at(ts):
         nonlocal cur
         if cur:
             d = (datetime.fromisoformat(ts) - datetime.fromisoformat(cur[1])).total_seconds()
-            out[cur[0]] = out.get(cur[0], 0) + max(d, 0)
+            d = max(d, 0)
+            out[cur[0]] = out.get(cur[0], 0) + (min(d, cap) if cap else d)
             cur = None
 
     for e in events:

@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field
 
 from ..auth import require
 from ..dbutil import connection
-from ..services import metrics, sessions
+from ..services import metrics, scope, sessions
 
 router = APIRouter(tags=["sessions", "analytics"])
 
@@ -67,9 +67,12 @@ def summary(date_from: str | None = None, date_to: str | None = None, complaint_
             group_by: str | None = Query(None, pattern="^(group|scenario|mode|participant)$"),
             user: dict = Depends(require("analytics"))):
     """Aggregate metrics with sample sizes; ``empty=true`` when nothing is recorded."""
+    f = scope.scoped(user, _filters(date_from, date_to, complaint_type, root_cause, repeat, scenario, group,
+                                    group_by, mode, participant))
     with connection() as conn:
-        return metrics.summary(conn, _filters(date_from, date_to, complaint_type, root_cause, repeat, scenario, group,
-                                              group_by, mode, participant))
+        out = metrics.summary(conn, f)
+    team = scope.lead_team(user)
+    return {**out, "scope": {"team": team}} if team else out
 
 
 @router.get("/api/analytics/sessions", summary="Per-session records")
@@ -78,5 +81,6 @@ def session_rows(date_from: str | None = None, date_to: str | None = None, compl
                  group: str | None = None, page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100),
                  user: dict = Depends(require("analytics"))):
     """Paginated sessions with derived durations."""
+    f = scope.scoped(user, _filters(date_from, date_to, complaint_type, root_cause, repeat, scenario, group))
     with connection() as conn:
-        return metrics.session_list(conn, _filters(date_from, date_to, complaint_type, root_cause, repeat, scenario, group), page, page_size)
+        return metrics.session_list(conn, f, page, page_size)

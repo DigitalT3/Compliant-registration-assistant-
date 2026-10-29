@@ -37,6 +37,7 @@ class UserUpdateIn(BaseModel):
     role: str | None = Field(default=None, max_length=30)
     user_group: str | None = Field(default=None, max_length=40)
     status: str | None = Field(default=None, max_length=20)
+    function: str | None = Field(default=None, max_length=40, description="Function (team); for a lead, the team they lead")
 
 
 @router.get("/api/auth/options", summary="Public sign-up options")
@@ -104,4 +105,4 @@ def users(status: str | None = Query(default=None, pattern="^(pending|active|dis
 @router.patch("/api/users/{user_id}", summary="Approve, disable or change role/group (administrators)")
 def update_user(user_id: str, body: UserUpdateIn, user: dict = Depends(require("users"))):
     with connection() as conn:
-        return accounts.update_user(conn, user, user_id, body.role, body.user_group, body.status)
+        return accounts.update_user(conn, user, user_id, body.role, body.user_group, body.status, body.function)

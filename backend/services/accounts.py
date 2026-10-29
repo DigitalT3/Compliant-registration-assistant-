@@ -190,6 +190,8 @@ def create_account(conn, actor_id: str | None, name: str, email: str, password: 
         raise ApiError(422, "invalid_function", "Choose a valid function.")
     if role not in get_config()["roles"]:
         raise ApiError(422, "invalid_role", "Unknown role.")
+    if role == "lead" and not function:
+        raise ApiError(422, "team_required", "Choose the team this lead leads.")
     name = _clean_name(name)
     _check_password(password, email)
     if conn.execute("SELECT 1 FROM users WHERE lower(email)=?", (email,)).fetchone():
@@ -282,12 +284,16 @@ def _active_admins(conn) -> int:
     return conn.execute("SELECT count(*) FROM users WHERE role='admin' AND status='active'").fetchone()[0]
 
 
-def update_user(conn, actor: dict, user_id: str, role=None, user_group=None, status=None) -> dict:
+def update_user(conn, actor: dict, user_id: str, role=None, user_group=None, status=None, function=None) -> dict:
     target = by_id(conn, user_id)
     if not target:
         raise ApiError(404, "user_not_found", "User not found.")
     if role is not None and role not in get_config()["roles"]:
         raise ApiError(422, "invalid_role", "Unknown role.")
+    if function is not None and function not in {f["id"] for f in settings()["functions"]}:
+        raise ApiError(422, "invalid_function", "Choose a valid function.")
+    if (role or target["role"]) == "lead" and not (function or target["function"]):
+        raise ApiError(422, "team_required", "Choose the team this lead leads.")
     if status is not None and status not in ("active", "disabled"):
         raise ApiError(422, "invalid_status", "Status must be active or disabled.")
     losing_admin = target["role"] == "admin" and target["status"] == "active" and (
@@ -296,12 +302,15 @@ def update_user(conn, actor: dict, user_id: str, role=None, user_group=None, sta
         raise ApiError(409, "last_admin", "There must be at least one active administrator.")
     if user_id == actor["id"] and status == "disabled":
         raise ApiError(409, "self_disable", "You cannot disable your own account.")
+    new_function = function or target["function"]
+    if function and not user_group:
+        user_group = function                  # a person's team is their function; sessions record it from here on
     new = {"role": role or target["role"], "user_group": user_group or target["user_group"],
-           "status": status or target["status"]}
+           "status": status or target["status"], "function": new_function}
     if all(new[k] == target[k] for k in new):
         return public(target)          # nothing changes (e.g. a double click): no write, no audit entry
-    conn.execute("UPDATE users SET role=?, user_group=?, status=? WHERE id=?",
-                 (new["role"], new["user_group"], new["status"], user_id))
+    conn.execute("UPDATE users SET role=?, user_group=?, status=?, function=? WHERE id=?",
+                 (new["role"], new["user_group"], new["status"], new["function"], user_id))
     audit(conn, actor["id"], "user_updated", {"user": user_id, "from": {k: target[k] for k in new}, "to": new})
     conn.commit()
     return public(by_id(conn, user_id))

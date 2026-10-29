@@ -168,7 +168,8 @@
     "prefill_origins": [
       "prefilled",
       "default"
-    ]
+    ],
+    "step_idle_cap_seconds": 600
   },
   "types": [
     {
@@ -370,7 +371,8 @@
       "id": "demo.lead",
       "name": "Demo Team Lead",
       "role": "lead",
-      "group": "leads"
+      "group": "leads",
+      "function": "group_a"
     },
     {
       "id": "demo.admin",

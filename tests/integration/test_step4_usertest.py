@@ -54,7 +54,8 @@ def test_baseline_needs_evaluate_permission_and_feeds_the_comparison(client):
     assert client.post("/api/baseline", headers=EVAL, json=row).status_code == 201
     assert client.post("/api/baseline", headers=EVAL, json={**row, "seconds": 0}).status_code == 422
     client.post("/api/baseline", headers=EVAL, json={**row, "seconds": 500})
-    assert client.get("/api/baseline", headers=LEAD).json()["by_group"]["group_a"] == {"mean_seconds": 400.0, "n": 2}
+    assert client.get("/api/baseline", headers=EVAL).json()["by_group"]["group_a"] == {"mean_seconds": 400.0, "n": 2}
+    assert client.get("/api/baseline", headers=LEAD).status_code == 403          # not split by team: not for team leads
     register(client)
     d = summary(client)["duration_seconds"]
     assert d["baseline_seconds"] == 400.0 and d["baseline_n"] == 2 and "stopwatch" in d["baseline_source"]
@@ -77,7 +78,8 @@ def test_exit_interviews_drive_the_daily_use_target(client):
     for i in range(6):
         assert client.post("/api/exit-interviews", headers=EVAL,
                            json={"participant_id": f"P{i}", "would_use_daily": i != 5, "comment": "ok"}).status_code == 201
-    assert client.get("/api/exit-interviews", headers=LEAD).json()["would_use_daily"] == {"yes": 5, "n": 6}
+    assert client.get("/api/exit-interviews", headers=EVAL).json()["would_use_daily"] == {"yes": 5, "n": 6}
+    assert client.get("/api/exit-interviews", headers=LEAD).status_code == 403
     register(client)
     t = {x["id"]: x for x in summary(client)["targets"]}["daily_use"]
     assert (t["value"], t["n"], t["status"], t["indicative"]) == (5, 6, "met", True)
