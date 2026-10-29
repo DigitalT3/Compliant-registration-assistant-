@@ -154,8 +154,9 @@ export default function Register({ onViewHistory, meName, config }: { onViewHist
       complaint_type: s.fields.complaint_type?.value, session_id: sid,
     });
     sessionStorage.setItem("cra.currentCustomer", c.customer_id);
-    const suggested = s.fields.complaint_type?.provenance === "suggested" ? { complaint_type: s.fields.complaint_type } : {};   // guessed from the email
-    set({ sessionId: sid, customerId: c.customer_id, ctx, fields: { ...pf.fields, ...suggested }, step: 1, search: null });
+    // The type sent above (chosen earlier, or guessed from the email) produced those defaults, so it has to stay with them.
+    const kept = s.fields.complaint_type?.value ? { complaint_type: s.fields.complaint_type } : {};
+    set({ sessionId: sid, customerId: c.customer_id, ctx, fields: { ...pf.fields, ...kept }, step: 1, search: null });
     post(`/api/sessions/${sid}/events`, { type: "step_entered", step: "review_details" }).catch(() => undefined);
   });
 

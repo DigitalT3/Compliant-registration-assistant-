@@ -616,3 +616,27 @@ test("T39 email path: channel is email and the type is already suggested, so eve
   await expect(page.getByLabel("Priority")).toHaveValue("normal");
   await expect(page.getByText("Choose the complaint type: it fills in the owner team and the response target.")).toHaveCount(0);
 });
+
+test("T40 a type chosen earlier is kept together with its defaults when the customer is selected again", async ({ page }) => {
+  await openApp(page);
+  await search(page, "100009");
+  await selectFirst(page);
+  await page.getByLabel("Complaint type").selectOption("billing");
+  await expect(page.getByLabel("Owner team")).toHaveValue("customer_service");
+  await page.getByRole("button", { name: "Back", exact: true }).click();                           // back to Find customer
+  await search(page, "100009");
+  await selectFirst(page);
+  await expect(page.getByLabel("Complaint type")).toHaveValue("billing");                           // not lost
+  await expect(page.getByLabel("Owner team")).toHaveValue("customer_service");                      // never a default without its type
+  await expect(page.getByText("Choose the complaint type: it fills in the owner team and the response target.")).toHaveCount(0);
+});
+
+test("T41 the header controls stay inside the window on a narrow screen", async ({ page }) => {
+  await page.setViewportSize({ width: 1100, height: 800 });
+  await openApp(page);
+  const signOut = page.getByRole("button", { name: /Sign out|Exit demo/ });
+  await expect(signOut).toBeVisible();
+  const box = await signOut.boundingBox();
+  expect(box!.x + box!.width).toBeLessThanOrEqual(1100);                                            // not pushed past the right edge
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);   // no sideways scrolling
+});
