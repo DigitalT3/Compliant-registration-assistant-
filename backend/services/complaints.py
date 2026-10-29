@@ -3,6 +3,7 @@
 Nothing here talks to any external system: there is no live-system write path.
 """
 import json
+import logging
 
 from .. import db
 from ..dbutil import audit
@@ -10,6 +11,8 @@ from ..errors import ApiError
 from ..settings import causes_by_id, get_config
 from . import repeat as repeat_svc
 from . import sessions as sessions_svc
+
+log = logging.getLogger(__name__)
 
 
 def load_history(conn, customer_id: str, exclude: str | None = None) -> list:
@@ -141,6 +144,7 @@ def create(conn, p: dict, user: dict) -> dict:
         audit(conn, user["id"], "complaint_saved", {"complaint_id": cid, "root_cause": p["root_cause"]})
         conn.commit()
     except Exception:
+        log.exception("complaint save failed")   # the API response stays generic; the cause goes to the server log
         conn.rollback()
         _record_failure(conn, user, session)
         raise ApiError(500, "save_failed", "Complaint could not be saved; nothing was stored. Please retry.")

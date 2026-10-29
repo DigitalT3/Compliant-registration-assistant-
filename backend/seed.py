@@ -179,9 +179,10 @@ def seed(conn: sqlite3.Connection) -> None:
     """Insert all synthetic reference, customer and complaint data (assumes empty tables)."""
     anchor = db.seed_anchor()
     stamp = anchor.isoformat()
-    _seed_reference(conn, stamp)
-    _seed_customers(conn, anchor, stamp)
-    _seed_history(conn, anchor)
+    with db.pipeline(conn):
+        _seed_reference(conn, stamp)
+        _seed_customers(conn, anchor, stamp)
+        _seed_history(conn, anchor)
 
 
 # PUBLIC_INTERFACE
@@ -195,20 +196,38 @@ def seed_if_empty() -> bool:
     return True
 
 
+def _truncate_current() -> bool:
+    """Postgres fast path: if the schema is already at the latest version, empty the tables
+    (identity counters restart) instead of dropping and recreating them. Returns True if done."""
+    from . import migrations
+
+    with db.connect() as conn:
+        tables = db.table_names(conn)
+        if not tables or db.get_version(conn) != max(migrations.MIGRATIONS):
+            return False
+        names = ", ".join(f'"{t}"' for t in tables)
+        conn.execute(f"TRUNCATE {names} RESTART IDENTITY CASCADE")
+    return True
+
+
 # PUBLIC_INTERFACE
 def reset() -> None:
     """Explicitly drop every table in the PoC database, recreate the schema and reseed.
 
     Destructive by design; only call from the CLI ``--reset`` flag or tests.
     """
+    if db.is_pg() and _truncate_current():
+        seed_if_empty()
+        return
     db.initialize()
     with db.connect() as conn:
         conn.execute("PRAGMA foreign_keys=OFF")
-        tables = [r[0] for r in conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")]
-        for t in tables:
-            conn.execute(f'DROP TABLE IF EXISTS "{t}"')
-        conn.execute("PRAGMA user_version=0")
+        for t in db.table_names(conn):
+            conn.execute(f'DROP TABLE IF EXISTS "{t}"' + (" CASCADE" if db.is_pg() else ""))
+        if db.is_pg():
+            conn.execute("DROP TABLE IF EXISTS schema_meta")
+        else:
+            conn.execute("PRAGMA user_version=0")
         conn.commit()
     db.initialize()
     seed_if_empty()
@@ -219,14 +238,13 @@ def fingerprint() -> dict:
     """Return per-table row counts and a SHA-256 over all table contents."""
     counts, digest = {}, hashlib.sha256()
     with db.connect() as conn:
-        tables = sorted(r[0] for r in conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"))
-        for t in tables:
-            rows = [tuple(r) for r in conn.execute(f'SELECT * FROM "{t}" ORDER BY rowid')]
+        order = "1" if db.is_pg() else "rowid"
+        for t in db.table_names(conn):
+            rows = [tuple(r) for r in conn.execute(f'SELECT * FROM "{t}" ORDER BY {order}')]
             counts[t] = len(rows)
             digest.update(t.encode())
             digest.update(json.dumps(rows, default=str).encode())
-        version = conn.execute("PRAGMA user_version").fetchone()[0]
+        version = db.get_version(conn)
     return {"user_version": version, "counts": counts, "sha256": digest.hexdigest()}
 
 
@@ -248,7 +266,7 @@ def main(argv=None) -> int:
         return 2
     if args.reset:
         reset()
-        print(f"Reset and seeded {db.db_path()}")
+        print(f"Reset and seeded {db.location()}")
     elif args.seed:
         print("Seeded" if seed_if_empty() else "Database not empty; nothing seeded")
     print(json.dumps(fingerprint(), indent=2))

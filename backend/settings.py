@@ -1,7 +1,6 @@
 """Effective configuration: config.json + runtime overrides + environment variables."""
 import json
 import os
-import sqlite3
 
 from . import db
 
@@ -24,7 +23,7 @@ def get_config() -> dict:
                     "AND version LIKE 'override-%' ORDER BY id DESC LIMIT 1", (kind,)).fetchone()
                 if row:
                     cfg[kind] = json.loads(row["content"])
-    except sqlite3.Error:
+    except db.DBError:
         pass  # database not initialised yet: file defaults apply
     return cfg
 

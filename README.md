@@ -43,6 +43,15 @@ npm run dev -- --host 127.0.0.1
 
 Open `http://127.0.0.1:5173`. The API health response is at `http://127.0.0.1:8000/health`; FastAPI generates API documentation at `http://127.0.0.1:8000/docs`.
 
+## Supabase (Postgres)
+
+By default the PoC uses the local SQLite file. To use a hosted Supabase database instead, put these in `.env` (never commit it): `POC_DB=postgres` and `DATABASE_URL=<Session pooler connection string, password URL-encoded>`. Choose an EU region. Restart the app; the schema is created and versioned automatically and the synthetic data is seeded only if the database is empty. `RESET=1 scripts/run_demo.sh` wipes and reseeds it.
+
+- All tables have row-level security on with no policies, so Supabase's public REST API can read nothing; only the backend (connecting as the owner) can.
+- `supabase/migrations/*.sql` are the same migrations as standard Supabase files, generated from `backend/migrations.py` (`python -m scripts.export_supabase_migrations`; add `--register` to record them in the project's migration history). A test fails if they drift from the code.
+- Tests always run on SQLite. To run them on Postgres, set `POC_TEST_PG=1`; they then use a throwaway schema that is dropped afterwards. Browser tests are forced to SQLite.
+- A hosted database adds network delay (about 0.25 s per query from a laptop).
+
 ## Synthetic data and reset
 
 `python -m backend.seed --reset` destructively recreates the local PoC tables and loads the fixed synthetic dataset. `python -m backend.seed --fingerprint` reports table counts and a deterministic content hash. The default fixed seed anchor keeps scripted repeat scenarios stable; do not use the data as real Renewi customer or complaint data.

@@ -1,9 +1,40 @@
 """Shared fixtures: isolated seeded temp DB and API client."""
+import os
+import uuid
+
 import pytest
 from fastapi.testclient import TestClient
 
-from backend import seed
+from backend import db, seed
 from backend.services import ai
+
+
+PG_MODE = os.environ.get("POC_TEST_PG") == "1"
+PG_SCHEMA = "t_" + uuid.uuid4().hex[:12]
+
+
+@pytest.fixture(scope="session", autouse=True)
+def postgres_schema():
+    """Postgres mode only (POC_TEST_PG=1, needs DATABASE_URL): one throwaway schema for the whole
+    run, dropped at the end. Each test empties and reseeds it, so seed.reset() can never touch
+    the real project tables."""
+    yield
+    if PG_MODE:
+        os.environ["POC_DB"] = "postgres"
+        os.environ.pop("POC_PG_SCHEMA", None)
+        with db._connect_pg() as conn:
+            conn.execute(f'DROP SCHEMA IF EXISTS "{PG_SCHEMA}" CASCADE')
+
+
+@pytest.fixture(autouse=True)
+def isolated_database(monkeypatch):
+    """Tests never touch a hosted database by accident: SQLite unless POC_TEST_PG=1."""
+    if PG_MODE:
+        monkeypatch.setenv("POC_DB", "postgres")
+        monkeypatch.setenv("POC_PG_SCHEMA", PG_SCHEMA)
+    else:
+        monkeypatch.setenv("POC_DB", "sqlite")
+        monkeypatch.delenv("POC_PG_SCHEMA", raising=False)
 
 
 @pytest.fixture()

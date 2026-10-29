@@ -27,7 +27,7 @@ export default defineConfig({
   webServer: [
     {
       // Fresh synthetic database for every run, so the scripted cases are deterministic.
-      command: "export POC_DB_PATH=frontend/.playwright-poc.sqlite3 && .venv/bin/python -m backend.seed --reset && .venv/bin/python -m uvicorn backend.app:app --host 127.0.0.1 --port 8010",
+      command: "export POC_DB=sqlite POC_DB_PATH=frontend/.playwright-poc.sqlite3 && .venv/bin/python -m backend.seed --reset && .venv/bin/python -m uvicorn backend.app:app --host 127.0.0.1 --port 8010",
       cwd: "..",
       url: "http://127.0.0.1:8010/health",
       reuseExistingServer: false,
