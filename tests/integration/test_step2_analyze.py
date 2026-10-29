@@ -204,3 +204,21 @@ def test_bedrock_faults_fall_back(client, bedrock):
     assert analyze(client, SERVICE)["error_category"] == "unavailable"
     bedrock(_FakeBedrock("no json here"))
     assert analyze(client, SERVICE)["error_category"] == "invalid_output"
+
+
+def test_bedrock_where_falls_back_to_the_registered_site(client, bedrock):
+    bedrock(_FakeBedrock(_GOOD))   # the model leaves "where" empty
+    site = client.get("/api/customer-data/sites", headers=EMP).json()
+    site = (site if isinstance(site, list) else site.get("rows") or site.get("items"))[0]
+    out = client.post("/api/complaints/analyze", json={"text": "Container niet geleegd.", "site_id": site["id"]}, headers=EMP).json()
+    assert out["result"]["summary"]["where"] == site["name"] and "where" not in out["result"]["summary"]["unknown_fields"]
+
+
+def test_container_extra_is_filled_from_the_chosen_order(client):
+    text = "De container is vandaag niet geleegd."   # names no container
+    out = analyze(client, text, complaint_type="service", container="BOX-001-1")
+    assert out["result"]["summary"]["extras"]["container_no"] == "BOX-001-1" and out["context_extras"] == ["container_no"]
+    named = analyze(client, SERVICE, complaint_type="service", container="BOX-001-1")   # text names BOX-009-1: text wins
+    assert named["result"]["summary"]["extras"]["container_no"] == "BOX-009-1" and "context_extras" not in named
+    billing = analyze(client, BILLING, complaint_type="billing", container="BOX-001-1")   # no container field for billing
+    assert "container_no" not in billing["result"]["summary"]["extras"]

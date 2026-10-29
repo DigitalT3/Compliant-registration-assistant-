@@ -332,6 +332,8 @@ def run(conn, op: str, payload: dict, session_id: str | None, actor: str) -> dic
                 result.complaint_type = None       # an unknown type is dropped, not trusted
             summ = result if op == "summarise" else getattr(result, "summary", None)
             if summ is not None:   # drop template fields the config does not define
+                if payload.get("site_name") and not summ.where:
+                    summ.where = payload["site_name"]   # the registered site is known context, not model output
                 summ.unknown_fields = [k for k in ("what", "where", "when", "impact") if not getattr(summ, k)]
                 allowed = {k for v in payload.get("template_extras_by_type", {}).values() for k in v}
                 summ.extras = {k: v for k, v in summ.extras.items() if k in allowed}

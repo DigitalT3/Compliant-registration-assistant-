@@ -125,7 +125,7 @@ test("T08 low confidence: nothing preselected, save blocked until a cause is cho
   await expect(save(page)).toBeDisabled();
 });
 
-test("T09 'Other' needs a reason before saving", async ({ page }) => {
+test("T09 'Other' needs a reason before leaving Classify", async ({ page }) => {
   await openApp(page);
   await search(page, "100020");
   await selectFirst(page);
@@ -134,10 +134,12 @@ test("T09 'Other' needs a reason before saving", async ({ page }) => {
   await page.getByRole("radio", { name: /^Other$/ }).check();
   await expect(page.getByLabel(/Reason for 'Other'/)).toBeVisible();
   await page.getByLabel("Complaint type").first().selectOption("service");               // Other has no type of its own
-  await next(page); await next(page);
-  await expect(save(page)).toBeDisabled();
-  await page.getByRole("button", { name: "Back", exact: true }).click();
-  await page.getByRole("button", { name: "Back", exact: true }).click();
+  await expect(page.getByRole("alert").filter({ hasText: "Enter a reason for 'Other'" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Next", exact: true })).toBeDisabled();   // blocked on Classify itself
+  await page.getByLabel(/Reason for 'Other'/).fill("Seagull nest (synthetic)");
+  await expect(page.getByRole("button", { name: "Next", exact: true })).toBeEnabled();
+  await page.getByLabel(/Reason for 'Other'/).fill("   ");                                 // blanks do not count
+  await expect(page.getByRole("button", { name: "Next", exact: true })).toBeDisabled();
   await page.getByLabel(/Reason for 'Other'/).fill("Seagull nest (synthetic)");
   await next(page); await next(page);
   await expect(save(page)).toBeEnabled();
@@ -639,4 +641,22 @@ test("T41 the header controls stay inside the window on a narrow screen", async 
   const box = await signOut.boundingBox();
   expect(box!.x + box!.width).toBeLessThanOrEqual(1100);                                            // not pushed past the right edge
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);   // no sideways scrolling
+});
+
+test("T42 an order picked after the summary was made fills the empty container number", async ({ page }) => {
+  await openApp(page);
+  await search(page, "100009");
+  await selectFirst(page);
+  await page.getByLabel("Complaint type").selectOption("service");
+  await describe(page, "De container is vandaag niet geleegd.", "nl");                              // no container in the text, no order chosen
+  await expect(page.getByLabel("Container no.")).toHaveValue("");
+  await page.getByRole("button", { name: "Back", exact: true }).click();                           // classify -> describe
+  await page.getByRole("button", { name: "Back", exact: true }).click();                           // describe -> review
+  const data = page.getByRole("region", { name: "Customer context" });
+  await data.getByRole("tab", { name: /orders/i }).click();
+  await data.getByRole("row").filter({ hasText: "BOX-009-1" }).first().getByRole("button", { name: "Use" }).click();
+  await next(page);
+  await next(page);                                                                                // same text: no new AI call
+  await expect(page.getByLabel("Container no.")).toHaveValue("BOX-009-1");
+  await expect(page.locator(".row", { hasText: "Container no." }).getByText("Prefilled")).toBeVisible();
 });

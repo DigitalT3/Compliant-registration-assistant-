@@ -26,6 +26,7 @@ class SummariseIn(BaseModel):
     site_id: str | None = None
     customer_id: str | None = None
     complaint_type: str | None = Field(None, description="Selects the summary template; optional")
+    container: str | None = Field(None, max_length=60, description="Container of the chosen order; fills the container extra")
     session_id: str | None = None
 
 
@@ -35,6 +36,7 @@ class AnalyzeIn(BaseModel):
     language: Lang = None
     site_id: str | None = None
     complaint_type: str | None = Field(None, description="If the user already chose a type, its template is used")
+    container: str | None = Field(None, max_length=60, description="Container of the chosen order; fills the container extra")
     session_id: str | None = None
 
 
@@ -101,11 +103,28 @@ def summarise(body: SummariseIn, user: dict = Depends(require("register"))):
         if body.site_id:
             r = conn.execute("SELECT name FROM sites WHERE id=?", (body.site_id,)).fetchone()
             site_name = r and r["name"]
-        return ai.run(conn, "summarise",
-                      {"text": body.text, "language": body.language, "site_name": site_name,
-                       "complaint_type": body.complaint_type,
-                       "template_extras_by_type": get_config()["summary"]["by_type"]},
-                      body.session_id, user["id"])
+        out = ai.run(conn, "summarise",
+                     {"text": body.text, "language": body.language, "site_name": site_name,
+                      "complaint_type": body.complaint_type,
+                      "template_extras_by_type": get_config()["summary"]["by_type"]},
+                     body.session_id, user["id"])
+    return _context_extras(out, get_config(), body.container, body.complaint_type)
+
+
+def _context_extras(out: dict, cfg: dict, container: str | None, complaint_type: str | None) -> dict:
+    """Fill the container extra from the chosen order when the text did not name one.
+
+    Lists the filled keys in ``context_extras`` so the screen can label them as prefilled.
+    """
+    if out["ai_status"] != "ok" or not container:
+        return out
+    summary = out["result"]["summary"] if "summary" in out["result"] else out["result"]
+    ctype = complaint_type or (out["result"].get("classification") or {}).get("complaint_type")
+    extras = summary.setdefault("extras", {})
+    if "container_no" in cfg["summary"]["by_type"].get(ctype, []) and not extras.get("container_no"):
+        extras["container_no"] = container
+        out["context_extras"] = ["container_no"]
+    return out
 
 
 def _site_name(conn, site_id):
@@ -142,7 +161,7 @@ def analyze(body: AnalyzeIn, user: dict = Depends(require("register"))):
                       "types": [t["id"] for t in cfg["types"]],
                       "template_extras_by_type": cfg["summary"]["by_type"]},
                      body.session_id, user["id"])
-    return _decorate(out, cfg, "classification")
+    return _decorate(_context_extras(out, cfg, body.container, body.complaint_type), cfg, "classification")
 
 
 @router.post("/api/complaints/classify", summary="Type and top-three root-cause candidates")

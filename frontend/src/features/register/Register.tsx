@@ -85,6 +85,18 @@ export default function Register({ onViewHistory, meName, config }: { onViewHist
   }, []);
 
   const val = (k: string) => s.fields[k]?.value || "";
+
+  // An order picked after the summary was made (back, choose an order, forward): fill the empty container extra
+  // from it without a new AI call, so edits already made to the summary stay.
+  const orderContainer = val("container"), ctype = val("complaint_type");
+  const otherNeedsReason = s.rootCause === "other" && !s.otherReason.trim();   // step 4: "Other" needs a reason before moving on
+  useEffect(() => {
+    const wants = (config?.summary?.by_type?.[ctype] || []).includes("container_no");
+    if (s.step === 3 && s.summary && orderContainer && wants && !s.summary.extras?.container_no) {
+      set({ summary: { ...s.summary, extras: { ...(s.summary.extras || {}), container_no: orderContainer },
+                       context_extras: [...(s.summary.context_extras || []), "container_no"] } });
+    }
+  }, [s.step, s.summary, orderContainer, ctype, config]);   // eslint-disable-line react-hooks/exhaustive-deps
   const origin = s.emailNote?.x ? "email" : "search";      // how the complaint arrived: sets the channel default (phone vs email)
   const label = (o: any) => (o ? o[lang] || o.en : "");
   const causes: any[] = config?.root_causes || [];
@@ -217,11 +229,11 @@ export default function Register({ onViewHistory, meName, config }: { onViewHist
   const analyse = async () => {
     const r = await post("/api/complaints/analyze", {
       text: s.text, language: s.textLang === "auto" ? null : s.textLang, site_id: val("site_id") || null,
-      complaint_type: val("complaint_type") || null, session_id: s.sessionId,
+      complaint_type: val("complaint_type") || null, container: val("container") || null, session_id: s.sessionId,
     });
     if (r.ai_status === "ok") {
       const { summary, classification } = r.result;
-      set({ summary: { ...summary, mock: r.mock }, summaryFailed: null, cls: { ...r, result: classification }, clsFailed: null,
+      set({ summary: { ...summary, mock: r.mock, context_extras: r.context_extras || [] }, summaryFailed: null, cls: { ...r, result: classification }, clsFailed: null,
             rootCause: r.preselect || "", causeOrigin: r.preselect ? "suggested" : "manual", analysedText: s.text });
       if (classification.complaint_type && !val("complaint_type")) await applyType(classification.complaint_type, "suggested");
     } else {
@@ -235,8 +247,8 @@ export default function Register({ onViewHistory, meName, config }: { onViewHist
     await applyType(v, "manual");
     if (s.text.trim() && s.summary) {
       const r = await post("/api/complaints/summarise", { text: s.text, language: s.textLang === "auto" ? null : s.textLang,
-        site_id: val("site_id") || null, complaint_type: v, session_id: s.sessionId });
-      if (r.ai_status === "ok") set({ summary: { ...s.summary, extras: r.result.extras } });
+        site_id: val("site_id") || null, complaint_type: v, container: val("container") || null, session_id: s.sessionId });
+      if (r.ai_status === "ok") set({ summary: { ...s.summary, extras: r.result.extras, context_extras: r.context_extras || [] } });
     }
   });
 
@@ -477,6 +489,7 @@ export default function Register({ onViewHistory, meName, config }: { onViewHist
                   <label htmlFor={`x-${k}`}>{config.summary.extra_labels?.[k]?.[lang] || k}</label>
                   <input id={`x-${k}`} value={s.summary.extras?.[k] || ""} placeholder={t("summary.unknown")}
                     onChange={(e) => set({ summary: { ...s.summary, extras: { ...(s.summary.extras || {}), [k]: e.target.value || null } } })} />
+                  {(s.summary.context_extras || []).includes(k) && s.summary.extras?.[k] === val("container") && <Prov p="prefilled" />}
                 </div>
               ))}
             </div>
@@ -519,6 +532,7 @@ export default function Register({ onViewHistory, meName, config }: { onViewHist
             <div className="card">
               <label htmlFor="or">{t("classify.other_reason")}</label>
               <input id="or" value={s.otherReason} maxLength={500} onChange={(e) => set({ otherReason: e.target.value })} />
+              {otherNeedsReason && <p className="warn" role="alert">{t("classify.other_needed")}</p>}
               {s.cls && <p className="muted">{t("classify.closest")}: {s.cls.result.candidates.map((c: any) => label(causes.find((x) => x.id === c.root_cause_id))).join(", ") || "–"}</p>}
             </div>
           )}
@@ -577,7 +591,7 @@ export default function Register({ onViewHistory, meName, config }: { onViewHist
       {s.step > 0 && (
         <div className="nav">
           <button className="secondary" onClick={() => goto(s.step - 1)}>{t("back")}</button>{" "}
-          {s.step < 5 && <button onClick={next} disabled={busy}>{!plain && s.step === 2 && s.text.trim() && s.analysedText !== s.text ? t("next.analyse") : t("next")}</button>}
+          {s.step < 5 && <button onClick={next} disabled={busy || (s.step === 3 && otherNeedsReason)}>{!plain && s.step === 2 && s.text.trim() && s.analysedText !== s.text ? t("next.analyse") : t("next")}</button>}
         </div>
       )}
     </section>
