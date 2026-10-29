@@ -7,7 +7,7 @@ from .. import db, settings
 from ..dbutil import audit
 from ..errors import ApiError
 
-STEPS = ["find_customer", "review_details", "describe_complaint", "classify", "check_repeats", "review_save"]
+STEPS = ["find_customer", "review_details", "describe_complaint", "classify", "repeat_save"]
 ORIGINS = {"prefilled", "default", "suggested", "manual", "edited", "blank"}
 EVENT_TYPES = {"step_entered", "step_completed", "field", "validation_failed"}
 

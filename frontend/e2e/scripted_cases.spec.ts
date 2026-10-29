@@ -48,8 +48,10 @@ test("T01 customer number, English text, suggested cause preselected, saved", as
   await expect(page.getByRole("radio", { name: /Missed collection/ }).first()).toBeChecked();   // confirm, don't type
   await expect(page.getByLabel("Complaint type").first()).toHaveValue("service");
   await next(page);
-  await expect(page.getByText("No repeat found under the current rule.")).toBeVisible();
-  await next(page);
+  await expect(page.getByText("No repeat found under the current rule.")).toBeVisible();   // repeat result and Save share one screen
+  await expect(save(page)).toBeVisible();
+  await expect(page.getByText("5. Repeat check and save")).toBeVisible();                   // five steps, as in the PRD
+  await expect(page.getByText(/^6\. /)).toHaveCount(0);
   await save(page).click();
   await saved(page);
 });
@@ -121,7 +123,7 @@ test("T08 low confidence: nothing preselected, save blocked until a cause is cho
   await describe(page, "Something odd happened but I am not sure what.", "en");
   await expect(page.getByText(/Low confidence/)).toBeVisible();
   await expect(page.getByRole("radio", { checked: true })).toHaveCount(0);
-  await next(page); await next(page);
+  await next(page);
   await expect(save(page)).toBeDisabled();
 });
 
@@ -141,7 +143,7 @@ test("T09 'Other' needs a reason before leaving Classify", async ({ page }) => {
   await page.getByLabel(/Reason for 'Other'/).fill("   ");                                 // blanks do not count
   await expect(page.getByRole("button", { name: "Next", exact: true })).toBeDisabled();
   await page.getByLabel(/Reason for 'Other'/).fill("Seagull nest (synthetic)");
-  await next(page); await next(page);
+  await next(page);
   await expect(save(page)).toBeEnabled();
   await save(page).click();
   await saved(page);
@@ -159,7 +161,6 @@ test("T10 seeded repeat is flagged with evidence; the dispute is stored next to 
   await expect(page.getByText(/POC-SEED-1/)).toBeVisible();
   await page.getByRole("radio", { name: "Not a repeat" }).check();
   await page.getByLabel("Reason (required)").fill("Different container this time");
-  await next(page);
   await save(page).click();
   await saved(page);
   const disputes = await (await request.get("http://127.0.0.1:8010/api/repeat-disputes", { headers: { "X-Demo-User": "demo.emp.a1" } })).json();
@@ -197,7 +198,7 @@ test("T22 plain form mode: no AI, manual cause, saved and tagged for timing", as
   await page.getByRole("button", { name: "Next", exact: true }).click();          // no "Analyse" step in plain mode
   await expect(page.getByText(/Plain form: no AI suggestions/)).toBeVisible();
   await page.getByRole("radio", { name: /Container damage/ }).check();
-  await next(page); await next(page);
+  await next(page);
   await save(page).click();
   await saved(page);
 });

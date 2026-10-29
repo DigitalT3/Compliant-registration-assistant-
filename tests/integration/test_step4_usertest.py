@@ -103,7 +103,7 @@ def test_sessions_csv_export(client):
     assert rows[0][:8] == ["session_id", "user", "group", "mode", "participant", "scenario", "status", "duration_s"]
     row = next(x for x in rows[1:] if x[0] == sid)
     assert row[4].startswith("'=") and row[6] == "saved" and float(row[7]) >= 0
-    assert "review_save_s" in rows[0] and "find_customer_s" in rows[0]
+    assert "repeat_save_s" in rows[0] and "find_customer_s" in rows[0]
     assert client.get("/api/export/sessions.csv", headers=EMP).status_code == 403
     assert len(list(csv.reader(io.StringIO(client.get("/api/export/sessions.csv", headers=LEAD, params={"mode": "plain"}).text)))) == 1
 

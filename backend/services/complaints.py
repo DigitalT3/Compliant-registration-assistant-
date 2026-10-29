@@ -136,7 +136,7 @@ def create(conn, p: dict, user: dict) -> dict:
         if session:
             _record_outcome(conn, session["id"], p)
             conn.execute("INSERT INTO step_events(session_id,step,event_type,at) VALUES(?,?,?,?)",
-                         (session["id"], "review_save", "step_completed", db.now()))
+                         (session["id"], "repeat_save", "step_completed", db.now()))
             conn.execute("UPDATE sessions SET status='saved',ended=? WHERE id=?", (db.now(), session["id"]))
             audit(conn, user["id"], "session_completed", {"session_id": session["id"], "outcome": "saved"})
         audit(conn, user["id"], "repeat_rule_evaluated", {"complaint_id": cid, "is_repeat": result["is_repeat"],

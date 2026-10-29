@@ -13,7 +13,7 @@ const guessType = (q: string) => {
   return "name";
 };
 
-const STEPS = ["find_customer", "review_details", "describe_complaint", "classify", "check_repeats", "review_save"] as const;
+const STEPS = ["find_customer", "review_details", "describe_complaint", "classify", "repeat_save"] as const;
 type Field = { value: string | null; provenance: string };
 
 interface State {
@@ -52,7 +52,8 @@ const init: State = {
 // Stepper state is kept in sessionStorage so a page reload does not lose the registration in progress.
 function load(): State {
   try {
-    return { ...init, ...JSON.parse(sessionStorage.getItem("cra.register") || "{}") };
+    const saved = { ...init, ...JSON.parse(sessionStorage.getItem("cra.register") || "{}") };
+    return { ...saved, step: Math.min(saved.step, STEPS.length - 1) };   // a flow saved before repeat and save were merged
   } catch {
     return init;
   }
@@ -539,7 +540,7 @@ export default function Register({ onViewHistory, meName, config }: { onViewHist
         </div>
       )}
 
-      {s.step === 4 && (
+      {s.step === 4 && (<>
         <div className="card">
           {s.repeat ? (
             <>
@@ -568,9 +569,7 @@ export default function Register({ onViewHistory, meName, config }: { onViewHist
           ) : t("loading")}
           <button className="secondary" disabled={busy} onClick={checkRepeat}>{t("repeat.run")}</button>
         </div>
-      )}
 
-      {s.step === 5 && (
         <div className="card">
           <h3>{t("review.title")}</h3>
           <dl>
@@ -586,12 +585,12 @@ export default function Register({ onViewHistory, meName, config }: { onViewHist
           {missing.length > 0 && <p className="warn">{t("review.missing", { f: missing.map((m) => t(`f.${m}`) === `f.${m}` ? m : t(`f.${m}`)).join(", ") })}</p>}
           <button disabled={busy || missing.length > 0} onClick={save}>{t("save")}</button>
         </div>
-      )}
+      </>)}
 
       {s.step > 0 && (
         <div className="nav">
           <button className="secondary" onClick={() => goto(s.step - 1)}>{t("back")}</button>{" "}
-          {s.step < 5 && <button onClick={next} disabled={busy || (s.step === 3 && otherNeedsReason)}>{!plain && s.step === 2 && s.text.trim() && s.analysedText !== s.text ? t("next.analyse") : t("next")}</button>}
+          {s.step < 4 && <button onClick={next} disabled={busy || (s.step === 3 && otherNeedsReason)}>{!plain && s.step === 2 && s.text.trim() && s.analysedText !== s.text ? t("next.analyse") : t("next")}</button>}
         </div>
       )}
     </section>
