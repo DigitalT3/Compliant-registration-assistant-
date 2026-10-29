@@ -133,7 +133,12 @@ def _migrate_v6(db) -> None:
     """)
 
 
-MIGRATIONS = {2: _migrate_v2, 3: _migrate_v3, 4: _migrate_v4, 5: _migrate_v5, 6: _migrate_v6}
+def _migrate_v7(db) -> None:
+    """Admin-created accounts and password resets use a temporary password that must be changed at first sign-in."""
+    _add_column(db, "users", "must_change_password", "INTEGER DEFAULT 0")
+
+
+MIGRATIONS = {2: _migrate_v2, 3: _migrate_v3, 4: _migrate_v4, 5: _migrate_v5, 6: _migrate_v6, 7: _migrate_v7}
 
 
 # PUBLIC_INTERFACE

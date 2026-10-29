@@ -348,3 +348,49 @@ test("T21b the email panel reports language, identifiers and the copied complain
   await expect(page.getByText(/The complaint text was copied to the next step/)).toBeVisible();
   await expect(page.getByText("Customer found")).toBeVisible();
 });
+
+test("T31 a real administrator (own password, no demo account) approves people and creates accounts with temporary passwords", async ({ page, request }) => {
+  await request.post(`${API}/api/auth/register`, { data: { name: "Lotte Meijer", email: "lotte.meijer@example.nl", password: "lotte-long-pw-1", function: "sales" } });
+  await openSignedOut(page);
+  await page.getByLabel("Work e-mail address").fill("admin@example.nl");
+  await page.getByLabel("Password", { exact: true }).fill("e2e-admin-password-1");
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Users", exact: true })).toBeVisible();     // admin lands on Users
+  await expect(page.getByText("Test Admin").first()).toBeVisible();
+
+  const waiting = page.getByRole("heading", { name: /Waiting for approval/ }).locator("xpath=..");
+  await waiting.getByRole("row", { name: /Lotte Meijer/ }).getByRole("button", { name: "Approve" }).click();
+  await expect(waiting.getByText("Lotte Meijer")).toHaveCount(0);
+
+  const form = page.locator("form", { hasText: "Add a person" });
+  await form.getByLabel("Full name").fill("Pieter Smit");
+  await form.getByLabel("E-mail").fill("pieter.smit@example.nl");
+  await form.getByLabel("Function").selectOption("site_operations");
+  await form.getByRole("button", { name: "Create account" }).click();
+  await expect(page.getByText("Temporary password for Pieter Smit")).toBeVisible();
+  const temp = (await page.locator("code").innerText()).trim();
+  expect(temp.length).toBeGreaterThanOrEqual(12);
+  await page.getByRole("button", { name: "I have noted it" }).click();
+  await page.getByRole("button", { name: "Sign out" }).click();
+
+  // The new person signs in with the temporary password and must choose their own before anything else.
+  await page.getByLabel("Work e-mail address").fill("pieter.smit@example.nl");
+  await page.getByLabel("Password", { exact: true }).fill(temp);
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Choose a new password" })).toBeVisible();
+  await expect(page.getByLabel("Customer number, order, container, name or postcode")).toHaveCount(0);
+  await page.getByLabel("Current password").fill(temp);
+  await page.getByLabel("New password", { exact: true }).fill("pieter-own-password-1");
+  await page.getByLabel("Repeat new password").fill("pieter-own-password-1");
+  await page.getByRole("button", { name: "Save password" }).click();
+  await expect(page.getByLabel("Customer number, order, container, name or postcode")).toBeVisible();   // now in the app
+  await expect(page.getByText("Site operations · employee")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Change password" })).toBeVisible();
+
+  // Lotte (approved above) can sign in with her own password.
+  await page.getByRole("button", { name: "Sign out" }).click();
+  await page.getByLabel("Work e-mail address").fill("lotte.meijer@example.nl");
+  await page.getByLabel("Password", { exact: true }).fill("lotte-long-pw-1");
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await expect(page.getByText("Sales · employee")).toBeVisible();
+});

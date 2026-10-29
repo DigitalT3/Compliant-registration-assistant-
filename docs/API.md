@@ -39,7 +39,10 @@ Complaint creation requires `customer_id`, `description`, `complaint_type`, `roo
 | `POST /api/auth/login` | public | `{email, password}` returns `{token, expires_in, user}`; generic error for wrong e-mail or password, 403 while pending or disabled, 429 when locked |
 | `GET /api/auth/me` | signed in | Profile and permissions |
 | `POST /api/auth/logout` | signed in | Recorded in the audit trail (the token simply expires) |
+| `POST /api/auth/change-password` | signed in | `{current_password, new_password}`; ends all older sessions and returns a new token |
+| `POST /api/users` | `users` (admin) | `{name, email, function?, role}`; creates an active account and returns a one-time `temporary_password` (must be changed at first sign-in) |
+| `POST /api/users/{id}/reset-password` | `users` (admin) | New one-time temporary password; unlocks the account |
 | `GET /api/users?status=` | `users` (admin) | List accounts, pending first |
 | `PATCH /api/users/{id}` | `users` (admin) | `{status, role, user_group}`; the last active admin cannot be disabled or demoted, and nobody can disable themselves |
 
-Send `Authorization: Bearer <token>`. The `X-Demo-User` header is accepted only while `POC_DEMO_MODE` is on.
+Send `Authorization: Bearer <token>`. While a temporary password is in use, every endpoint except `/api/auth/me`, `/api/auth/change-password`, `/api/auth/logout` and `/api/auth/options` answers 403 `password_change_required`. The `X-Demo-User` header is accepted only while `POC_DEMO_MODE=1`.

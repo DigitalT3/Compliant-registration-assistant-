@@ -128,3 +128,81 @@ def test_registered_employee_registers_a_complaint_as_themselves(client):
     with db.connect() as conn:
         actions = [x["action"] for x in conn.execute("SELECT action FROM audit WHERE actor=?", (uid,))]
     assert {"account_registered", "login", "complaint_saved"} <= set(actions)
+
+
+# ---- real administrator: created from the command line, creates people, resets passwords ----
+
+def bearer(client, email, password):
+    r = client.post("/api/auth/login", json={"email": email, "password": password})
+    assert r.status_code == 200, r.text
+    return {"Authorization": "Bearer " + r.json()["token"]}, r.json()["user"]
+
+
+def test_demo_accounts_are_off_unless_switched_on(client, monkeypatch):
+    monkeypatch.delenv("POC_DEMO_MODE", raising=False)
+    assert client.get("/api/auth/me", headers=EMP).status_code == 401
+    assert client.get("/api/auth/options").json()["demo_mode"] is False
+
+
+def test_first_admin_is_created_from_the_command_line_and_can_run_the_system(client, monkeypatch):
+    from backend import admin
+    monkeypatch.setenv("POC_ADMIN_PASSWORD", "operator-password-1")
+    monkeypatch.setattr("sys.stdin.isatty", lambda: False)
+    assert admin.main(["create-admin", "--email", "Boss@Example.nl", "--name", "Ada Admin"]) == 0
+    h, user = bearer(client, "boss@example.nl", "operator-password-1")
+    assert user["role"] == "admin" and user["must_change_password"] in (0, False)
+    uid = register(client).json()["id"]                                     # a person signs themselves up
+    pending = client.get("/api/users", headers=h, params={"status": "pending"}).json()["items"]
+    assert [p["id"] for p in pending] == [uid]
+    assert client.patch(f"/api/users/{uid}", headers=h, json={"status": "active"}).status_code == 200
+    assert login(client).status_code == 200                                 # no demo account was involved
+
+
+def test_admin_creates_a_person_with_a_one_time_password_that_must_be_changed(client):
+    r = client.post("/api/users", headers=ADMIN, json={"name": "Joost Bakker", "email": "joost@example.nl",
+                                                        "function": "customer_service"})
+    assert r.status_code == 201
+    temp = r.json()["temporary_password"]
+    assert len(temp) >= 12 and r.json()["user"]["role"] == "employee"
+    h, user = bearer(client, "joost@example.nl", temp)
+    assert user["must_change_password"] in (1, True)
+    blocked = client.get("/api/customers/search", params={"q": "100009"}, headers=h)
+    assert blocked.status_code == 403 and blocked.json()["error"]["code"] == "password_change_required"
+    assert client.get("/api/auth/me", headers=h).status_code == 200          # still allowed: needed to show the screen
+    bad = client.post("/api/auth/change-password", headers=h, json={"current_password": "wrong-one-123", "new_password": "a-brand-new-pw-1"})
+    assert bad.status_code == 403 and bad.json()["error"]["code"] == "wrong_password"
+    weak = client.post("/api/auth/change-password", headers=h, json={"current_password": temp, "new_password": "short"})
+    assert weak.json()["error"]["code"] == "weak_password"
+    same = client.post("/api/auth/change-password", headers=h, json={"current_password": temp, "new_password": temp})
+    assert same.json()["error"]["code"] == "same_password"
+    ok = client.post("/api/auth/change-password", headers=h, json={"current_password": temp, "new_password": "a-brand-new-pw-1"})
+    assert ok.status_code == 200 and ok.json()["user"]["must_change_password"] in (0, False)
+    new = {"Authorization": "Bearer " + ok.json()["token"]}
+    assert client.get("/api/customers/search", params={"q": "100009"}, headers=new).status_code == 200
+    assert client.get("/api/auth/me", headers=h).json()["error"]["code"] == "session_expired"   # the old session ended
+    assert client.post("/api/auth/login", json={"email": "joost@example.nl", "password": temp}).status_code == 401
+
+
+def test_admin_reset_unlocks_and_issues_a_new_temporary_password(client):
+    approve(client, register(client).json()["id"])
+    for _ in range(5):
+        login(client, password="wrong-password-1")
+    assert login(client).status_code == 429
+    uid = next(u["id"] for u in client.get("/api/users", headers=ADMIN).json()["items"] if u["email"] == NEW["email"].lower())
+    temp = client.post(f"/api/users/{uid}/reset-password", headers=ADMIN).json()["temporary_password"]
+    assert login(client).status_code == 401                                   # old password no longer works
+    assert login(client, password=temp).json()["user"]["must_change_password"] in (1, True)
+    assert client.post("/api/users/demo.emp.a1/reset-password", headers=ADMIN).json()["error"]["code"] == "no_password_login"
+    assert client.post(f"/api/users/{uid}/reset-password", headers=EMP).status_code == 403
+
+
+def test_only_admins_create_people_and_input_is_validated(client):
+    body = {"name": "X Person", "email": "x@example.nl", "function": "sales"}
+    assert client.post("/api/users", headers=EMP, json=body).status_code == 403
+    assert client.post("/api/users", headers=ADMIN, json={**body, "role": "wizard"}).json()["error"]["code"] == "invalid_role"
+    assert client.post("/api/users", headers=ADMIN, json={**body, "function": "nope"}).json()["error"]["code"] == "invalid_function"
+    assert client.post("/api/users", headers=ADMIN, json=body).status_code == 201
+    assert client.post("/api/users", headers=ADMIN, json=body).json()["error"]["code"] == "email_taken"
+    with db.connect() as conn:
+        acts = [r["action"] for r in conn.execute("SELECT action FROM audit")]
+    assert "account_created" in acts

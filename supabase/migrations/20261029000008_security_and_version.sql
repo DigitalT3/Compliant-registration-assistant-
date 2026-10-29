@@ -3,7 +3,7 @@
 -- Supabase exposes public tables through its REST API. With row-level security on and no policies,
 -- the anon and authenticated roles can read and write nothing; the backend connects as the owner.
 CREATE TABLE IF NOT EXISTS schema_meta(key TEXT PRIMARY KEY, value TEXT);
-INSERT INTO schema_meta(key,value) VALUES('user_version','6')
+INSERT INTO schema_meta(key,value) VALUES('user_version','7')
   ON CONFLICT(key) DO UPDATE SET value=excluded.value;
 
 ALTER TABLE "customers" ENABLE ROW LEVEL SECURITY;

@@ -21,6 +21,18 @@ class LoginIn(BaseModel):
     password: str = Field(max_length=200)
 
 
+class ChangePasswordIn(BaseModel):
+    current_password: str = Field(max_length=200)
+    new_password: str = Field(max_length=200)
+
+
+class UserCreateIn(BaseModel):
+    name: str = Field(max_length=80)
+    email: str = Field(max_length=254)
+    function: str | None = Field(default=None, max_length=40)
+    role: str = Field(default="employee", max_length=30)
+
+
 class UserUpdateIn(BaseModel):
     role: str | None = Field(default=None, max_length=30)
     user_group: str | None = Field(default=None, max_length=40)
@@ -60,6 +72,26 @@ def logout(user: dict = Depends(current_user)):
         audit(conn, user["id"], "logout", {})
         conn.commit()
     return {"ok": True}
+
+
+@router.post("/api/auth/change-password", summary="Change your own password")
+def change_password(body: ChangePasswordIn, user: dict = Depends(current_user)):
+    """Needs the current password. Ends every older session and returns a fresh token."""
+    with connection() as conn:
+        return accounts.change_password(conn, user["id"], body.current_password, body.new_password)
+
+
+@router.post("/api/users", status_code=201, summary="Create an account with a temporary password (administrators)")
+def create_user(body: UserCreateIn, user: dict = Depends(require("users"))):
+    """The temporary password is returned once and must be changed at first sign-in."""
+    with connection() as conn:
+        return accounts.admin_create(conn, user, body.name, body.email, body.function, body.role)
+
+
+@router.post("/api/users/{user_id}/reset-password", summary="Issue a new temporary password (administrators)")
+def reset_password(user_id: str, user: dict = Depends(require("users"))):
+    with connection() as conn:
+        return accounts.admin_reset_password(conn, user, user_id)
 
 
 @router.get("/api/users", summary="List accounts (administrators)")

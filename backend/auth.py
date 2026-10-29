@@ -5,7 +5,7 @@ The ``X-Demo-User`` header is NOT production authentication; it is honoured only
 (``POC_DEMO_MODE``, default on for the PoC). Permissions come from ``config.json`` roles and are enforced
 here, on the backend.
 """
-from fastapi import Depends, Header
+from fastapi import Depends, Header, Request
 
 from .dbutil import connection
 from .errors import ApiError
@@ -13,8 +13,12 @@ from .services import accounts
 from .settings import get_config
 
 
+# A temporary password must be replaced before anything else is possible.
+_ALLOWED_BEFORE_CHANGE = {"/api/auth/me", "/api/auth/change-password", "/api/auth/logout", "/api/auth/options"}
+
+
 # PUBLIC_INTERFACE
-def current_user(authorization: str | None = Header(default=None),
+def current_user(request: Request, authorization: str | None = Header(default=None),
                  x_demo_user: str | None = Header(default=None)) -> dict:
     """Resolve the caller: bearer token first, then the demo header when demo mode is on (401 otherwise)."""
     with connection() as conn:
@@ -23,9 +27,11 @@ def current_user(authorization: str | None = Header(default=None),
             row = accounts.by_id(conn, uid)
             if not row or row["status"] != "active":
                 raise ApiError(401, "account_inactive", "This account is not active. Please sign in again.")
+            if row["must_change_password"] and request.url.path not in _ALLOWED_BEFORE_CHANGE:
+                raise ApiError(403, "password_change_required", "Choose a new password before you continue.")
             return dict(row)
         if x_demo_user and accounts.demo_mode():
-            row = conn.execute("SELECT id,name,role,user_group,function,status FROM users WHERE id=?",
+            row = conn.execute("SELECT id,name,role,user_group,function,status,must_change_password FROM users WHERE id=?",
                                (x_demo_user,)).fetchone()
             if not row:
                 raise ApiError(401, "unknown_user", "Unknown demo user.")

@@ -21,7 +21,7 @@ from ..errors import ApiError
 from ..settings import get_config
 
 _EMAIL = re.compile(r"^[^@\s]{1,64}@[^@\s]+\.[^@\s]{2,}$")
-_PUBLIC = "id,name,email,role,user_group,function,status"
+_PUBLIC = "id,name,email,role,user_group,function,status,must_change_password"
 
 
 def settings() -> dict:
@@ -29,8 +29,8 @@ def settings() -> dict:
 
 
 def demo_mode() -> bool:
-    """Demo accounts (X-Demo-User header) are allowed unless POC_DEMO_MODE=0 (use that in any shared deployment)."""
-    return os.environ.get("POC_DEMO_MODE", "1") != "0"
+    """Demo accounts (X-Demo-User header, no password) are OFF unless POC_DEMO_MODE=1. Never enable them in a shared deployment."""
+    return os.environ.get("POC_DEMO_MODE", "0") == "1"
 
 
 # --- passwords -----------------------------------------------------------------------------------
@@ -71,15 +71,22 @@ def _b64(data: bytes) -> str:
     return base64.urlsafe_b64encode(data).rstrip(b"=").decode()
 
 
-def issue_token(conn, user_id: str) -> tuple[str, int]:
+def _fingerprint(password_hash: str | None) -> str:
+    return hashlib.sha256((password_hash or "").encode()).hexdigest()[:12]
+
+
+def issue_token(conn, user_id: str, password_hash: str | None = None) -> tuple[str, int]:
     ttl = int(settings()["token_ttl_minutes"]) * 60
-    body = _b64(json.dumps({"sub": user_id, "exp": int(time.time()) + ttl}).encode())
+    if password_hash is None:
+        row = conn.execute("SELECT password_hash FROM users WHERE id=?", (user_id,)).fetchone()
+        password_hash = row and row["password_hash"]
+    body = _b64(json.dumps({"sub": user_id, "exp": int(time.time()) + ttl, "pv": _fingerprint(password_hash)}).encode())
     sig = _b64(hmac.new(_secret(conn), body.encode(), hashlib.sha256).digest())
     return f"{body}.{sig}", ttl
 
 
 def verify_token(conn, token: str) -> str:
-    """Return the user id in a valid, unexpired token or raise 401."""
+    """Return the user id in a valid, unexpired token or raise 401. A token ends when the password changes."""
     try:
         body, sig = token.split(".")
         good = _b64(hmac.new(_secret(conn), body.encode(), hashlib.sha256).digest())
@@ -88,6 +95,9 @@ def verify_token(conn, token: str) -> str:
         data = json.loads(base64.urlsafe_b64decode(body + "=" * (-len(body) % 4)))
         if int(data["exp"]) < time.time():
             raise ApiError(401, "session_expired", "Your session has expired. Please sign in again.")
+        row = conn.execute("SELECT password_hash FROM users WHERE id=?", (data["sub"],)).fetchone()
+        if not row or data.get("pv") != _fingerprint(row["password_hash"]):
+            raise ApiError(401, "session_expired", "Your session has ended. Please sign in again.")
         return data["sub"]
     except ApiError:
         raise
@@ -147,13 +157,84 @@ def register(conn, name: str, email: str, password: str, function: str) -> dict:
     if conn.execute("SELECT 1 FROM users WHERE lower(email)=?", (email,)).fetchone():
         raise ApiError(409, "email_taken", "An account with this e-mail address already exists.")
     status = "pending" if cfg["require_approval"] else "active"
-    uid = "u_" + secrets.token_hex(5)
-    conn.execute("INSERT INTO users(id,name,role,user_group,email,password_hash,function,status,created_at,failed_logins) "
-                 "VALUES(?,?,?,?,?,?,?,?,?,0)",
-                 (uid, name, "employee", function, email, hash_password(password), function, status, db.now()))
+    uid = _insert(conn, name, email, password, function, "employee", status, must_change=False)
     audit(conn, uid, "account_registered", {"function": function, "status": status})
     conn.commit()
     return {"id": uid, "status": status}
+
+
+def _insert(conn, name, email, password, function, role, status, must_change) -> str:
+    uid = "u_" + secrets.token_hex(5)
+    conn.execute("INSERT INTO users(id,name,role,user_group,email,password_hash,function,status,created_at,"
+                 "failed_logins,must_change_password) VALUES(?,?,?,?,?,?,?,?,?,0,?)",
+                 (uid, name, role, function, email, hash_password(password), function, status, db.now(),
+                  int(must_change)))
+    return uid
+
+
+_TEMP_ALPHABET = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"  # no look-alike characters
+
+
+def temporary_password() -> str:
+    return "".join(secrets.choice(_TEMP_ALPHABET) for _ in range(14))
+
+
+def create_account(conn, actor_id: str | None, name: str, email: str, password: str, function: str, role: str,
+                   must_change: bool) -> str:
+    """Create an active account directly (administrator action or the first-admin command)."""
+    cfg = settings()
+    email = (email or "").strip().lower()
+    if not _EMAIL.match(email) or len(email) > 254:
+        raise ApiError(422, "invalid_email", "Enter a valid e-mail address.")
+    if function and function not in {f["id"] for f in cfg["functions"]}:
+        raise ApiError(422, "invalid_function", "Choose a valid function.")
+    if role not in get_config()["roles"]:
+        raise ApiError(422, "invalid_role", "Unknown role.")
+    name = _clean_name(name)
+    _check_password(password, email)
+    if conn.execute("SELECT 1 FROM users WHERE lower(email)=?", (email,)).fetchone():
+        raise ApiError(409, "email_taken", "An account with this e-mail address already exists.")
+    uid = _insert(conn, name, email, password, function or None, role, "active", must_change)
+    audit(conn, actor_id or uid, "account_created", {"user": uid, "role": role, "by_admin": bool(actor_id)})
+    conn.commit()
+    return uid
+
+
+def admin_create(conn, actor: dict, name, email, function, role) -> dict:
+    temp = temporary_password()
+    uid = create_account(conn, actor["id"], name, email, temp, function, role, must_change=True)
+    return {"user": public(by_id(conn, uid)), "temporary_password": temp}
+
+
+def admin_reset_password(conn, actor: dict, user_id: str) -> dict:
+    target = conn.execute("SELECT id,email FROM users WHERE id=?", (user_id,)).fetchone()
+    if not target:
+        raise ApiError(404, "user_not_found", "User not found.")
+    if not target["email"]:
+        raise ApiError(422, "no_password_login", "This is a demo account without a password.")
+    temp = temporary_password()
+    conn.execute("UPDATE users SET password_hash=?, must_change_password=1, failed_logins=0, locked_until=NULL WHERE id=?",
+                 (hash_password(temp), user_id))
+    audit(conn, actor["id"], "password_reset_by_admin", {"user": user_id})
+    conn.commit()
+    return {"user": public(by_id(conn, user_id)), "temporary_password": temp}
+
+
+def change_password(conn, user_id: str, current: str, new: str) -> dict:
+    row = conn.execute("SELECT email,password_hash FROM users WHERE id=?", (user_id,)).fetchone()
+    if not row or not row["email"]:
+        raise ApiError(422, "no_password_login", "This account does not use a password.")
+    if not verify_password(current or "", row["password_hash"]):
+        raise ApiError(403, "wrong_password", "The current password is not correct.")
+    _check_password(new, row["email"])
+    if verify_password(new, row["password_hash"]):
+        raise ApiError(422, "same_password", "Choose a password you have not used before.")
+    new_hash = hash_password(new)
+    conn.execute("UPDATE users SET password_hash=?, must_change_password=0 WHERE id=?", (new_hash, user_id))
+    audit(conn, user_id, "password_changed", {})
+    conn.commit()
+    token, ttl = issue_token(conn, user_id, new_hash)      # older tokens stop working; this is the new session
+    return {"token": token, "expires_in": ttl, "user": public(by_id(conn, user_id))}
 
 
 def login(conn, email: str, password: str) -> dict:

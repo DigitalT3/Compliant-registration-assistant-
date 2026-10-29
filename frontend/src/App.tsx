@@ -2,7 +2,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { ApiError, clearSession, download, get, getDemoUser, hasToken, post, put, setDemoUser } from "./api/client";
 import { I18nProvider, useI18n } from "./i18n";
 import Register from "./features/register/Register";
-import AuthScreen, { Me } from "./features/auth/Auth";
+import AuthScreen, { ChangePassword, Me } from "./features/auth/Auth";
 import Users from "./features/users/Users";
 
 type Page = "register" | "history" | "dashboard" | "rootcauses" | "evaluation" | "config" | "users" | "about";
@@ -31,6 +31,7 @@ function AppShell() {
   const [page, setPage] = useState<Page>("register");
   const [config, setConfig] = useState<any>(null);
   const [fnLabels, setFnLabels] = useState<any[]>([]);
+  const [changingPw, setChangingPw] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const enter = (user: Me) => {
@@ -67,6 +68,7 @@ function AppShell() {
 
   if (!booted) return <main className="loading-page"><p>{t("loading")}</p></main>;
   if (!me) return <AuthScreen notice={notice} onSignedIn={enter} />;
+  if (me.must_change_password) return <ChangePassword forced onDone={enter} />;   // temporary password: nothing else until it is replaced
   if (!config) {
     return <main className="loading-page"><ErrorMessage error={error} /><p>{t("loading")}</p></main>;
   }
@@ -107,6 +109,7 @@ function AppShell() {
               <option value="en">English</option>
             </select>
           </label>
+          {!demoSession && <button className="secondary" onClick={() => setChangingPw(true)}>{t("pw.change")}</button>}
           <button className="secondary" onClick={signOut}>{demoSession ? t("auth.demo.exit") : t("auth.signout")}</button>
         </div>
       </header>
@@ -124,6 +127,12 @@ function AppShell() {
           ))}
         </nav>
         <main className="content">
+          {changingPw && (
+            <div className="card">
+              <ChangePassword forced={false} onCancel={() => setChangingPw(false)}
+                onDone={(u) => { setMe(u); setChangingPw(false); setNotice(undefined); }} />
+            </div>
+          )}
           {current === "register" && <Register config={config} onViewHistory={() => setPage("history")} />}
           {current === "history" && <History config={config} />}
           {current === "dashboard" && <Dashboard />}

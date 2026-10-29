@@ -49,8 +49,15 @@ Employees create an account on the sign-in screen with their name, work e-mail, 
 
 - Passwords are stored as salted scrypt hashes. Sign-in uses signed, expiring tokens (8 hours, kept in session storage); five wrong passwords lock the account for 15 minutes. Roles are read from the database on every request, and sign-ins, failures and role changes are in the audit trail.
 - Settings are in `config.json` under `auth` (functions, approval on/off, allowed e-mail domains, password length, lockout).
-- **Demo accounts** (the ten fictional users, no password) stay available under "Demo access" on the sign-in screen while `POC_DEMO_MODE` is on (default). Set `POC_DEMO_MODE=0` for any shared deployment. A first administrator for a real deployment is created by an existing admin, or use a demo admin in demo mode.
-- This is the PoC's own sign-in, not Renewi single sign-on. It is built so that the token check and login can be replaced by the client's identity provider (e.g. Microsoft Entra ID via OpenID Connect) without changing the screens or permissions. There is no password reset yet (an administrator disables and re-creates the account).
+- **First administrator (real account, no demo):** run this once in your own terminal. It asks for the password at a hidden prompt, so the password never appears on screen, in the shell history or in chat. It uses the database selected in `.env` (SQLite or Supabase).
+
+  ```bash
+  python -m backend.admin create-admin --email you@company.nl --name "Your Name"
+  ```
+
+  Then sign in on the sign-in screen. The admin lands on **Users**, where they approve people who signed themselves up, **add a person** (the app shows a one-time temporary password, which that person must change at first sign-in), **reset a password** (also unlocks the account), change roles, and disable accounts. Everyone can change their own password from the header; changing it ends all older sessions. If an admin is locked out, `python -m backend.admin set-password --email you@company.nl` sets a new password.
+- **Demo accounts** (the ten fictional users, no password) are **off by default**. Set `POC_DEMO_MODE=1` only for a local demo; never in a shared deployment. The sign-in screen shows "Demo access" only while it is on.
+- This is the PoC's own sign-in, not Renewi single sign-on. It is built so that the token check and login can be replaced by the client's identity provider (e.g. Microsoft Entra ID via OpenID Connect) without changing the screens or permissions. Password reset is done by an administrator (temporary password); there is no self-service e-mail reset yet because the PoC sends no e-mail.
 
 ## Supabase (Postgres)
 

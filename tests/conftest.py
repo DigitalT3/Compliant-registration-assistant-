@@ -28,7 +28,8 @@ def postgres_schema():
 
 @pytest.fixture(autouse=True)
 def isolated_database(monkeypatch):
-    """Tests never touch a hosted database by accident: SQLite unless POC_TEST_PG=1."""
+    """Tests never touch a hosted database by accident: SQLite unless POC_TEST_PG=1. Demo accounts are on for tests."""
+    monkeypatch.setenv("POC_DEMO_MODE", "1")
     if PG_MODE:
         monkeypatch.setenv("POC_DB", "postgres")
         monkeypatch.setenv("POC_PG_SCHEMA", PG_SCHEMA)

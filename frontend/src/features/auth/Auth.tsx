@@ -2,7 +2,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { ApiError, get, post, setDemoUser, setToken } from "../../api/client";
 import { useI18n } from "../../i18n";
 
-export type Me = { id: string; name: string; email?: string | null; role: string; user_group: string; function?: string | null; permissions: string[] };
+export type Me = { must_change_password?: number | boolean; id: string; name: string; email?: string | null; role: string; user_group: string; function?: string | null; permissions: string[] };
 
 /** Sign-in and create-account screen shown before any complaint can be registered. */
 export default function AuthScreen({ notice, onSignedIn }: { notice?: string; onSignedIn: (me: Me) => void }) {
@@ -109,4 +109,39 @@ export default function AuthScreen({ notice, onSignedIn }: { notice?: string; on
       </div>
     </main>
   );
+}
+
+/** Change your own password. Forced (no cancel) after a temporary password; optional from the header. */
+export function ChangePassword({ forced, onDone, onCancel }: { forced: boolean; onDone: (me: Me) => void; onCancel?: () => void }) {
+  const { t } = useI18n();
+  const [f, setF] = useState({ cur: "", n1: "", n2: "" });
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const submit = async (e: FormEvent) => {
+    e.preventDefault(); setError(null);
+    if (f.n1 !== f.n2) { setError(t("auth.mismatch")); return; }
+    setBusy(true);
+    try {
+      const r = await post("/api/auth/change-password", { current_password: f.cur, new_password: f.n1 });
+      setToken(r.token);                                  // the old session ended; this is the new one
+      onDone(r.user);
+    } catch (e2) { setError(e2 instanceof ApiError ? e2.message : String(e2)); } finally { setBusy(false); }
+  };
+  const body = (
+    <form onSubmit={submit} className="auth-card" style={forced ? undefined : { margin: 0 }}>
+      <h2 style={{ marginTop: 0 }}>{t("pw.title")}</h2>
+      {forced && <p className="warn" role="status">{t("pw.forced")}</p>}
+      {error && <p className="error" role="alert">{error}</p>}
+      <label htmlFor="pw-cur">{t("pw.current")}</label>
+      <input id="pw-cur" type="password" autoComplete="current-password" required value={f.cur} onChange={(e) => setF({ ...f, cur: e.target.value })} />
+      <label htmlFor="pw-new">{t("pw.new")}</label>
+      <input id="pw-new" type="password" autoComplete="new-password" required value={f.n1} onChange={(e) => setF({ ...f, n1: e.target.value })} />
+      <p className="hint">{t("auth.pw_hint", { n: 10 })}</p>
+      <label htmlFor="pw-rep">{t("pw.repeat")}</label>
+      <input id="pw-rep" type="password" autoComplete="new-password" required value={f.n2} onChange={(e) => setF({ ...f, n2: e.target.value })} />
+      <button className="primary" disabled={busy || !f.cur || !f.n1}>{t("pw.save")}</button>
+      {!forced && onCancel && <button type="button" className="secondary primary" onClick={onCancel}>{t("pw.cancel")}</button>}
+    </form>
+  );
+  return forced ? <main className="auth-page">{body}</main> : body;
 }
