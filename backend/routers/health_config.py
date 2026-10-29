@@ -9,7 +9,7 @@ from .. import db
 from ..auth import require
 from ..dbutil import audit, connection
 from ..errors import ApiError
-from ..services import taxonomy_review
+from ..services import rule_signoff, taxonomy_review
 from ..settings import ai_settings, get_config, invalidate_config
 
 router = APIRouter()
@@ -52,7 +52,9 @@ def get_cfg():
     """Return the effective configuration (no secrets)."""
     with connection() as conn:
         review = taxonomy_review.status(conn)
-    return {**_public(get_config()), "taxonomy_review": {k: review[k] for k in ("state", "required", "agreed")}}
+        signoff = rule_signoff.status(conn)
+    return {**_public(get_config()), "taxonomy_review": {k: review[k] for k in ("state", "required", "agreed")},
+            "rule_signoff": {k: signoff[k] for k in ("state", "required", "signed", "signed_by", "signed_at", "rule_version")}}
 
 
 @router.get("/api/config/defaults", tags=["config"], summary="Configured field defaults")
@@ -87,9 +89,11 @@ def review_causes(body: ReviewIn, user: dict = Depends(require("review_taxonomy"
 
 @router.get("/api/config/repeat-rule", tags=["config"], summary="Active repeat rule")
 def get_rule():
-    """Return the active repeat rule with provisional metadata."""
+    """Return the active repeat rule with provisional metadata and its sign-off status."""
     c = get_config()
-    return {"repeat_rule": c["repeat_rule"], "meta": {k: v for k, v in c["provisional_meta"].items() if k.startswith("repeat_rule")}}
+    with connection() as conn:
+        signoff = rule_signoff.status(conn, c)
+    return {"repeat_rule": c["repeat_rule"], "signoff": signoff, "meta": {k: v for k, v in c["provisional_meta"].items() if k.startswith("repeat_rule")}}
 
 
 def _override(conn, kind: str, content: dict, user: dict, before: dict) -> dict:
@@ -105,8 +109,21 @@ def _override(conn, kind: str, content: dict, user: dict, before: dict) -> dict:
     return content
 
 
-@router.put("/api/config/repeat-rule", tags=["config"], summary="Update repeat rule (configure permission)")
-def put_rule(body: RepeatRuleUpdate, user: dict = Depends(require("configure"))):
+class SignoffIn(BaseModel):
+    """The rule owner's decision on the repeat rule as it is now."""
+    decision: str = Field(..., pattern="^(sign_off|changes)$")
+    comment: str | None = Field(None, max_length=500)
+
+
+@router.post("/api/config/repeat-rule/signoff", tags=["config"], summary="Sign off the repeat rule, or ask for changes")
+def signoff_rule(body: SignoffIn, user: dict = Depends(require("sign_off_rule"))):
+    """Needs the ``sign_off_rule`` permission (the rule owner). Editing the rule afterwards voids the sign-off."""
+    with connection() as conn:
+        return rule_signoff.review(conn, user, body.decision, body.comment)
+
+
+@router.put("/api/config/repeat-rule", tags=["config"], summary="Update repeat rule (edit_rule permission)")
+def put_rule(body: RepeatRuleUpdate, user: dict = Depends(require("edit_rule"))):
     """Replace the repeat rule; creates a new rule version and an audit entry."""
     if not set(body.match_keys) <= {"customer_id", "site_id"}:
         raise ApiError(422, "invalid_match_keys", "match_keys must be a subset of customer_id, site_id.")

@@ -7,19 +7,19 @@ import Users from "./features/users/Users";
 import CustomerDataPage, { Section } from "./features/customerdata/CustomerDataPage";
 import CustomersPage from "./features/customerdata/CustomersPage";
 
-type Page = "register" | "history" | "customers" | Section | "dashboard" | "rootcauses" | "evaluation" | "config" | "users" | "about";
+type Page = "register" | "history" | "customers" | Section | "dashboard" | "readout" | "rootcauses" | "evaluation" | "config" | "users" | "about";
 
 /** Menu items and the permission each needs; items a role cannot use are not shown (the backend still enforces it). */
 const NAV: [Page, string | null][] = [
-  ["register", "register"], ["history", "read"], ["customers", "customer_data"], ["sites", "customer_data"], ["contracts", "customer_data"], ["orders", "customer_data"], ["containers", "customer_data"], ["dashboard", "analytics"], ["rootcauses", "read"],
-  ["evaluation", "evaluate"], ["config", "configure"], ["users", "users"], ["about", null],
+  ["register", "register"], ["history", "read"], ["customers", "customer_data"], ["sites", "customer_data"], ["contracts", "customer_data"], ["orders", "customer_data"], ["containers", "customer_data"], ["dashboard", "analytics"], ["readout", "readout"], ["rootcauses", "read"],
+  ["evaluation", "evaluate"], ["config", "edit_rule"], ["users", "users"], ["about", null],
 ];
 
 const DATA_PAGES: Page[] = ["sites", "contracts", "orders", "containers"];
 
 /** The first screen each role needs. */
 const LANDING: Record<string, Page> = {
-  employee: "register", lead: "dashboard", evaluator: "evaluation", admin: "users", governance: "history", viewer: "history",
+  employee: "register", lead: "dashboard", evaluator: "evaluation", admin: "users", governance: "history", viewer: "history", rule_owner: "config", business_owner: "readout",
 };
 
 function ErrorMessage({ error }: { error: string | null }) {
@@ -145,8 +145,9 @@ function AppShell() {
           {current === "history" && <History config={config} />}
           {current === "dashboard" && <Dashboard />}
           {current === "rootcauses" && <RootCauses config={config} canReview={me.permissions.includes("review_taxonomy")} onReviewed={(review: any) => setConfig({ ...config, review })} />}
+          {current === "readout" && <Readout canDecide={me.permissions.includes("decide")} />}
           {current === "evaluation" && <Evaluation config={config} />}
-          {current === "config" && <Configuration config={config} onUpdated={setConfig} />}
+          {current === "config" && <Configuration config={config} canSign={me.permissions.includes("sign_off_rule")} onUpdated={setConfig} />}
           {current === "users" && <Users config={config} meId={me.id} />}
           {current === "about" && <About config={config} />}
         </main>
@@ -560,8 +561,26 @@ function Evaluation({ config }: { config: any }) {
   );
 }
 
-function Configuration({ config, onUpdated }: { config: any; onUpdated: (config: any) => void }) {
+function Configuration({ config, canSign, onUpdated }: { config: any; canSign: boolean; onUpdated: (config: any) => void }) {
   const { t } = useI18n();
+  const [signoff, setSignoff] = useState<any>(null);
+  const [disputes, setDisputes] = useState<any[]>([]);
+  const [comment, setComment] = useState("");
+  const [busy, setBusy] = useState(false);
+  const loadSignoff = () => {
+    get<any>("/api/config/repeat-rule").then((r) => setSignoff(r.signoff)).catch(() => undefined);
+    get<any>("/api/repeat-disputes").then((r) => setDisputes(r.items)).catch(() => undefined);
+  };
+  useEffect(loadSignoff, []);
+  const sign = async (decision: "sign_off" | "changes") => {
+    setBusy(true);
+    try {
+      const r = await post<any>("/api/config/repeat-rule/signoff", { decision, comment: comment || null });
+      setSignoff(r); setComment(""); setError(null);
+      onUpdated({ ...config, rule_signoff: { state: r.state, required: r.required, signed: r.signed, signed_by: r.signed_by, signed_at: r.signed_at, rule_version: r.rule_version } });
+    } catch (cause) { setError(cause instanceof ApiError ? cause.message : String(cause)); }
+    setBusy(false);
+  };
   const [rule, setRule] = useState(config.repeat_rule);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -577,6 +596,7 @@ function Configuration({ config, onUpdated }: { config: any; onUpdated: (config:
       const refreshed = await get<any>("/api/config");
       onUpdated({ ...config, ...refreshed, repeat_rule: result.repeat_rule });
       setRule(result.repeat_rule);
+      loadSignoff();
       setMessage(t("config.updated"));
       setError(null);
     }).catch((cause) => setError(cause instanceof ApiError ? cause.message : String(cause)));
@@ -585,8 +605,33 @@ function Configuration({ config, onUpdated }: { config: any; onUpdated: (config:
   return (
     <section>
       <h2>{t("config.title")}</h2>
-      <p className="muted">{t("config.readonly")}</p>
       <ErrorMessage error={error} />
+      {signoff && (
+        <article className="card" aria-label={t("rule.title")}>
+          <h3>{t("rule.title")} <span className={`badge ${signoff.state === "signed_off" ? "prov-prefilled" : signoff.state === "draft" ? "prov-default" : "prov-edited"}`}>{t(`rule.state.${signoff.state}`)}</span></h3>
+          <p>{t("rule.version", { v: signoff.rule_version })}{signoff.signed_at && ` ${t("rule.signed_on", { date: signoff.signed_at.slice(0, 10) })}`}</p>
+          {signoff.reviews.length === 0 ? <p className="muted">{t("rule.none")}</p> : (
+            <ul>{signoff.reviews.map((r: any) => (
+              <li key={r.user_id}><b>{r.name}</b>: {t(`rule.decision.${r.decision}`)} · {r.at.slice(0, 10)}{!r.current && <span className="muted"> {t("rule.older")}</span>}{r.comment && <> · <i>{r.comment}</i></>}</li>
+            ))}</ul>
+          )}
+          {canSign ? (
+            <>
+              <label htmlFor="rule-comment">{t("taxo.comment")}</label>
+              <input id="rule-comment" value={comment} maxLength={500} onChange={(e) => setComment(e.target.value)} />
+              <div className="inline">
+                <button disabled={busy} onClick={() => sign("sign_off")}>{t("rule.sign")}</button>
+                <button className="secondary" disabled={busy || !comment.trim()} onClick={() => sign("changes")}>{t("taxo.changes")}</button>
+              </div>
+            </>
+          ) : <p className="muted">{t("rule.only_owner")}</p>}
+        </article>
+      )}
+      <article className="card">
+        <h3>{t("eval.disputes")}</h3>
+        {disputes.length ? <ul>{disputes.map((item) => <li key={item.id}>{item.complaint_id}: {item.decision} — {item.reason}</li>)}</ul> : <p className="empty">{t("eval.none")}</p>}
+      </article>
+      <h3>{t("rule.edit")}</h3>
       <form className="card form-grid" onSubmit={submit}>
         <label>{t("config.lookback")}<input type="number" min="0" max="3650" value={rule.lookback_days} onChange={(event) => setRule({ ...rule, lookback_days: event.target.value })} /></label>
         <label>{t("config.keys")}<input value={Array.isArray(rule.match_keys) ? rule.match_keys.join(", ") : rule.match_keys} onChange={(event) => setRule({ ...rule, match_keys: event.target.value })} /></label>
@@ -594,6 +639,65 @@ function Configuration({ config, onUpdated }: { config: any; onUpdated: (config:
         <label>{t("config.cause_mode")}<select value={rule.cause_mode} onChange={(event) => setRule({ ...rule, cause_mode: event.target.value })}><option value="level1">level1</option><option value="level2">level2</option><option value="none">none</option></select></label>
         <button>{t("config.update")}</button>{message && <span className="ok">{message}</span>}
       </form>
+    </section>
+  );
+}
+
+function Readout({ canDecide }: { canDecide: boolean }) {
+  const { t } = useI18n();
+  const [ev, setEv] = useState<any>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [decision, setDecision] = useState("conditional");
+  const [comment, setComment] = useState("");
+  const load = () => get<any>("/api/readout").then((r) => { setEv(r); setError(null); }).catch((cause) => setError(cause instanceof ApiError ? cause.message : String(cause)));
+  useEffect(() => { load(); }, []);
+  const send = async () => {
+    try { setEv(await post<any>("/api/readout/decision", { decision, comment })); setComment(""); setError(null); }
+    catch (cause) { setError(cause instanceof ApiError ? cause.message : String(cause)); }
+  };
+  if (!ev) return <section><h2>{t("ro.title")}</h2><ErrorMessage error={error} />{!error && <p>{t("loading")}</p>}</section>;
+  const fmt = (id: string, v: number | null) => v === null ? "–" : ["time", "daily_use"].includes(id) ? String(Math.round(v * 10) / 10) : `${Math.round(v * 100)}%`;
+  const b = ev.baseline;
+  return (
+    <section>
+      <h2>{t("ro.title")}</h2>
+      <p className="muted">{t("ro.intro")}</p>
+      <ErrorMessage error={error} />
+      <button className="secondary" onClick={() => download("/api/export/readout.csv", "readout.csv").catch((c) => setError(String(c.message || c)))}>{t("ro.export")}</button>
+      <article className="card">
+        <h3>{t("dash.targets")}</h3>
+        {ev.targets.length === 0 ? <p className="empty">{t("dash.empty")}</p> : (
+          <table><thead><tr><th>{t("dash.target")}</th><th>{t("dash.value")}</th><th>n</th><th>{t("dash.status")}</th></tr></thead>
+            <tbody>{ev.targets.map((x: any) => (
+              <tr key={x.id}><td>{x.target}</td><td>{fmt(x.id, x.value)}</td><td>{x.n}</td>
+                <td><span className={`badge ${x.status === "met" ? "prov-prefilled" : x.status === "not_met" ? "prov-default" : "prov-blank"}`}>{t(`status.${x.status}`)}</span>{x.indicative && <small className="muted"> {t("dash.indicative")}</small>}</td></tr>
+            ))}</tbody></table>
+        )}
+        <p className="muted">{b.baseline_seconds ? t("ro.baseline", { base: b.baseline_seconds, n: b.baseline_n, mean: b.mean ?? "–", pct: b.faster_than_baseline === null ? "–" : Math.round(b.faster_than_baseline * 100) }) : t("dash.no_baseline")}</p>
+      </article>
+      <article className="card">
+        <h3>{t("ro.conditions")}</h3>
+        <ul>{ev.conditions.map((c: any) => (
+          <li key={c.id}><span className={`badge ${c.ok ? "prov-prefilled" : "prov-default"}`}>{c.ok ? t("ro.ok") : t("ro.open")}</span> <b>{t(`ro.cond.${c.id}`)}</b>: {c.detail}</li>
+        ))}</ul>
+      </article>
+      <article className="card">
+        <h3>{t("ro.decision")}</h3>
+        {ev.decisions.length === 0 ? <p className="muted">{t("ro.none")}</p> : (
+          <ul>{ev.decisions.map((d: any) => <li key={d.at}><b>{d.name}</b>: {t(`ro.d.${d.decision}`)} · {d.at.slice(0, 10)} · <i>{d.comment}</i></li>)}</ul>
+        )}
+        {canDecide ? (
+          <>
+            <label htmlFor="ro-decision">{t("ro.decision")}</label>
+            <select id="ro-decision" value={decision} onChange={(e) => setDecision(e.target.value)}>
+              {["go", "conditional", "no_go"].map((d) => <option key={d} value={d}>{t(`ro.d.${d}`)}</option>)}
+            </select>
+            <label htmlFor="ro-comment">{t("ro.reason")}</label>
+            <input id="ro-comment" value={comment} maxLength={1000} onChange={(e) => setComment(e.target.value)} />
+            <button disabled={!comment.trim()} onClick={send}>{t("ro.record")}</button>
+          </>
+        ) : <p className="muted">{t("ro.only_owner")}</p>}
+      </article>
     </section>
   );
 }

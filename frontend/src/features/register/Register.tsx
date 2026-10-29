@@ -102,8 +102,9 @@ export default function Register({ onViewHistory, meName, config }: { onViewHist
     const what = [...(rule.match_keys || []).map(same),
       ...(rule.cause_mode === "level1" ? [t("repeat.cause.level1")] : rule.cause_mode === "level2" ? [t("repeat.cause.level2")] : []),
       t("repeat.within", { d: r.lookback_days })].join(", ");
-    const who = config?.provisional_meta?.["repeat_rule.match_keys"]?.owner_to_confirm;
-    return `${t("repeat.plain", { v: r.rule_version, what })} ${who ? t("repeat.provisional", { who }) : ""}`.trim();
+    const who = config?.provisional_meta?.["repeat_rule.match_keys"]?.owner_to_confirm, so = config?.rule_signoff;
+    const tail = so?.state === "signed_off" ? t("repeat.signed", { who: so.signed_by.join(", "), date: (so.signed_at || "").slice(0, 10) }) : who ? t("repeat.provisional", { who }) : "";
+    return `${t("repeat.plain", { v: r.rule_version, what })} ${tail}`.trim();
   };
   const otherNeedsReason = s.rootCause === "other" && !s.otherReason.trim();   // step 4: "Other" needs a reason before moving on
   useEffect(() => {

@@ -845,3 +845,50 @@ test("T50 the process owners agree the cause list: three real accounts, the last
   await expect(page.getByLabel("Agreement on this list").getByText("Only the process owners")).toBeVisible();
   await expect(page.getByRole("button", { name: "I agree with this list" })).toHaveCount(0);
 });
+
+test("T51 the rule owner signs off the repeat rule and the business owner records go/no-go: real accounts", async ({ page, request }) => {
+  const makeUser = async (name: string, email: string, role: string) => {
+    const r = await (await request.post(`${API}/api/users`, { headers: ADMIN, data: { name, email, function: null, role } })).json();
+    return r.temporary_password as string;
+  };
+  const signIn = async (email: string, temp: string, own: string) => {                           // sign in on the real screen, choose an own password
+    await openSignedOut(page);
+    await page.getByLabel("Work e-mail address").fill(email);
+    await page.getByLabel("Password", { exact: true }).fill(temp);
+    await page.getByRole("button", { name: "Sign in", exact: true }).click();
+    await page.getByLabel("Current password").fill(temp);
+    await page.getByLabel("New password", { exact: true }).fill(own);
+    await page.getByLabel("Repeat new password").fill(own);
+    await page.getByRole("button", { name: "Save password" }).click();
+  };
+  const juulTemp = await makeUser("Juul Rule", "juul.rule@example.nl", "rule_owner");
+  const glennTemp = await makeUser("Glenn Business", "glenn.business@example.nl", "business_owner");
+
+  await signIn("juul.rule@example.nl", juulTemp, "juul-own-password-1");                         // lands on the rule page
+  const rule = page.getByLabel("Sign-off of this repeat rule");
+  await expect(rule.getByText("Draft", { exact: true })).toBeVisible();
+  await rule.getByRole("button", { name: "Sign off this rule" }).click();
+  await expect(rule.getByText("Signed off", { exact: true })).toBeVisible();
+  await expect(rule.getByText("Juul Rule")).toBeVisible();
+  await page.getByLabel("Lookback").fill("45");                                                   // an edit voids the sign-off
+  await page.getByRole("button", { name: /Update/ }).click();
+  await expect(rule.getByText("Draft", { exact: true })).toBeVisible();
+  await expect(rule.getByText(/for an earlier version of the rule/)).toBeVisible();
+  await rule.getByRole("button", { name: "Sign off this rule" }).click();
+  await expect(rule.getByText("Signed off", { exact: true })).toBeVisible();
+
+  await signIn("glenn.business@example.nl", glennTemp, "glenn-own-password-1");                   // lands on the readout
+  await expect(page.getByRole("heading", { name: "Readout for the go/no-go decision" })).toBeVisible();
+  await expect(page.getByText("Repeat rule signed off")).toBeVisible();
+  await expect(page.getByText("Cause list agreed")).toBeVisible();
+  await page.getByLabel("Reason (required)").fill("Go once the cause list is agreed");
+  await page.getByLabel("Decision", { exact: true }).selectOption("conditional");
+  await page.getByRole("button", { name: "Record decision" }).click();
+  await expect(page.getByText("Go with conditions · ")).toBeVisible();
+  await expect(page.getByText("Go once the cause list is agreed")).toBeVisible();
+
+  await openApp(page, "demo.admin");                                                              // an administrator sees the readout but cannot decide
+  await page.getByRole("button", { name: "Readout" }).click();
+  await expect(page.getByText("Only the business owner")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Record decision" })).toHaveCount(0);
+});

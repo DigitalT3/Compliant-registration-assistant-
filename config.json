@@ -321,13 +321,28 @@
       "evaluate",
       "audit",
       "users",
-      "customer_data"
+      "customer_data",
+      "edit_rule",
+      "readout"
     ],
     "evaluator": [
       "read",
       "analytics",
       "evaluate",
-      "review_taxonomy"
+      "review_taxonomy",
+      "readout"
+    ],
+    "rule_owner": [
+      "read",
+      "analytics",
+      "edit_rule",
+      "sign_off_rule"
+    ],
+    "business_owner": [
+      "read",
+      "analytics",
+      "readout",
+      "decide"
     ],
     "governance": [
       "read",
@@ -555,6 +570,9 @@
   "report": {
     "per_employee_min_n": 3,
     "show_employee_names": true
+  },
+  "rule_signoff": {
+    "required": 1
   },
   "taxonomy_review": {
     "required_agreements": 3
