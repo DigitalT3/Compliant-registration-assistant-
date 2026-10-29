@@ -92,7 +92,37 @@ def _migrate_v2(db: sqlite3.Connection) -> None:
     """)
 
 
-MIGRATIONS = {2: _migrate_v2}
+def _migrate_v3(db: sqlite3.Connection) -> None:
+    """Add the defaulted form fields (priority, owner team, response target, container)."""
+    for table, column, ddl in [
+        ("complaints", "priority", "TEXT"),
+        ("complaints", "owner_team", "TEXT"),
+        ("complaints", "response_target_days", "INTEGER"),
+        ("complaints", "container", "TEXT"),
+    ]:
+        _add_column(db, table, column, ddl)
+
+
+def _migrate_v4(db: sqlite3.Connection) -> None:
+    """Store both taxonomy levels on each complaint (FR-11): category (level 1) next to the sub-cause."""
+    _add_column(db, "complaints", "root_cause_category", "TEXT")
+
+
+def _migrate_v5(db: sqlite3.Connection) -> None:
+    """Support the timed user test: session mode and participant, baseline timings, exit interviews."""
+    _add_column(db, "sessions", "mode", "TEXT DEFAULT 'assistant'")
+    _add_column(db, "sessions", "participant_id", "TEXT")
+    db.executescript("""
+    CREATE TABLE IF NOT EXISTS baseline(
+      id INTEGER PRIMARY KEY, user_group TEXT NOT NULL, scenario TEXT, participant_id TEXT,
+      seconds REAL NOT NULL, note TEXT, actor TEXT, at TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS exit_interviews(
+      id INTEGER PRIMARY KEY, participant_id TEXT NOT NULL, would_use_daily INTEGER NOT NULL,
+      comment TEXT, actor TEXT, at TEXT NOT NULL);
+    """)
+
+
+MIGRATIONS = {2: _migrate_v2, 3: _migrate_v3, 4: _migrate_v4, 5: _migrate_v5}
 
 
 # PUBLIC_INTERFACE

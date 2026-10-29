@@ -106,13 +106,16 @@ def test_session_analytics(client):
     ev(type="step_entered", step="classify")
     client.post("/api/complaints/classify", headers=h, json={"text": "missed again", "session_id": s})
     assert client.post(f"/api/sessions/{s}/complete", headers=h, json={"outcome": "saved"}).status_code == 400
-    body = {**BASE, "root_cause": "missed", "session_id": s}
+    prov = {"customer_id": "prefilled", "site_id": "prefilled", "channel": "default", "status": "default",
+            "complaint_type": "suggested", "root_cause": "manual", "description": "manual"}
+    body = {**BASE, "root_cause": "missed", "session_id": s, "field_provenance": prov}
     assert client.post("/api/complaints", headers=h, json=body).status_code == 201
     assert ev(type="step_entered", step="classify") == 409
     m = client.get("/api/analytics/summary", headers=ADMIN).json()
     assert m["sessions"]["saved"] == 1 and m["duration_seconds"]["n"] == 1
     assert m["classification"]["top_three_rate"] == {"value": 1.0, "n": 1}
-    assert m["fields"]["prefill_rate"]["n"] == 2
+    # 15 tracked fields; customer, site, channel and status were prefilled/defaulted, the rest blank or typed.
+    assert m["fields"]["prefill_rate"] == {"value": round(4 / 15, 4), "n": 15}
     assert client.get("/api/analytics/sessions", headers=ADMIN).json()["total"] == 1
     assert client.get("/api/analytics/summary", headers=ADMIN, params={"root_cause": "late"}).json()["empty"] is True
 

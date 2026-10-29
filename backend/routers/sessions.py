@@ -12,6 +12,8 @@ router = APIRouter(tags=["sessions", "analytics"])
 class SessionIn(BaseModel):
     """Start a session (optionally tagging a scripted scenario)."""
     scenario: str | None = Field(None, max_length=20)
+    mode: str = Field("assistant", max_length=10, description="assistant or plain")
+    participant_id: str | None = Field(None, max_length=40, description="Test participant tag (timed user test)")
 
 
 class EventIn(BaseModel):
@@ -33,7 +35,7 @@ class CompleteIn(BaseModel):
 def start(body: SessionIn, user: dict = Depends(require("register"))):
     """Create a session; returns its ID."""
     with connection() as conn:
-        return sessions.start(conn, user, body.scenario)
+        return sessions.start(conn, user, body.scenario, body.mode, body.participant_id)
 
 
 @router.post("/api/sessions/{session_id}/events", summary="Record a step or field event")
@@ -50,19 +52,24 @@ def complete(session_id: str, body: CompleteIn, user: dict = Depends(require("re
         return sessions.close(conn, session_id, body.outcome, user, body.failure_status)
 
 
-def _filters(date_from, date_to, complaint_type, root_cause, repeat, scenario, group, group_by=None):
+def _filters(date_from, date_to, complaint_type, root_cause, repeat, scenario, group, group_by=None,
+             mode=None, participant=None):
     return {"date_from": date_from, "date_to": date_to, "complaint_type": complaint_type, "root_cause": root_cause,
-            "repeat": repeat, "scenario": scenario, "group": group, "group_by": group_by}
+            "repeat": repeat, "scenario": scenario, "group": group, "group_by": group_by, "mode": mode,
+            "participant": participant}
 
 
 @router.get("/api/analytics/summary", summary="Metrics from recorded data")
 def summary(date_from: str | None = None, date_to: str | None = None, complaint_type: str | None = None,
             root_cause: str | None = None, repeat: bool | None = None, scenario: str | None = None,
-            group: str | None = None, group_by: str | None = Query(None, pattern="^(group|scenario)$"),
+            group: str | None = None, mode: str | None = Query(None, pattern="^(assistant|plain)$"),
+            participant: str | None = None,
+            group_by: str | None = Query(None, pattern="^(group|scenario|mode|participant)$"),
             user: dict = Depends(require("analytics"))):
     """Aggregate metrics with sample sizes; ``empty=true`` when nothing is recorded."""
     with connection() as conn:
-        return metrics.summary(conn, _filters(date_from, date_to, complaint_type, root_cause, repeat, scenario, group, group_by))
+        return metrics.summary(conn, _filters(date_from, date_to, complaint_type, root_cause, repeat, scenario, group,
+                                              group_by, mode, participant))
 
 
 @router.get("/api/analytics/sessions", summary="Per-session records")

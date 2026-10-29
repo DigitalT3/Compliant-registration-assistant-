@@ -34,7 +34,7 @@ def _public(cfg: dict) -> dict:
     return {"app": cfg["app"], "version": cfg["version"], "default_language": cfg["default_language"],
             "taxonomy_version": cfg["taxonomy_version"], "types": cfg["types"], "required_fields": cfg["required_fields"],
             "classification": cfg["classification"], "summary": cfg["summary"], "repeat_rule": cfg["repeat_rule"],
-            "defaults": cfg["defaults"], "baseline": cfg["baseline"], "provisional_meta": cfg["provisional_meta"],
+            "defaults": cfg["defaults"], "field_options": cfg["field_options"], "baseline": cfg["baseline"], "provisional_meta": cfg["provisional_meta"],
             "roles": cfg["roles"], "demo_users": cfg["demo_users"], "synthetic_only": True,
             "ai": {"provider": ai["provider"], "model": ai["model"], "mock": ai["provider"] != "live"}}
 
@@ -64,7 +64,7 @@ def get_causes():
     """Return the active (provisional) taxonomy and complaint types."""
     c = get_config()
     return {"taxonomy_version": c["taxonomy_version"], "types": c["types"], "root_causes": c["root_causes"],
-            "meta": c["provisional_meta"]["taxonomy"]}
+            "categories": c["root_cause_categories"], "meta": c["provisional_meta"]["taxonomy"]}
 
 
 @router.get("/api/config/repeat-rule", tags=["config"], summary="Active repeat rule")
@@ -103,7 +103,7 @@ def put_rule(body: RepeatRuleUpdate, user: dict = Depends(require("configure")))
 def put_defaults(body: DefaultsUpdate, user: dict = Depends(require("configure"))):
     """Replace channel defaults; only known complaint types are accepted."""
     cfg = get_config()
-    if not set(body.defaults) <= {t["id"] for t in cfg["types"]}:
+    if not set(body.defaults) <= {t["id"] for t in cfg["types"]} | {"_all"}:
         raise ApiError(422, "invalid_type", "Unknown complaint type in defaults.")
     with connection() as conn:
         return {"defaults": _override(conn, "defaults", body.defaults, user, copy.deepcopy(cfg["defaults"]))}

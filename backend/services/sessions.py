@@ -8,20 +8,28 @@ from ..dbutil import audit
 from ..errors import ApiError
 
 STEPS = ["find_customer", "review_details", "describe_complaint", "classify", "check_repeats", "review_save"]
-ORIGINS = {"prefilled", "default", "manual", "edited", "blank"}
+ORIGINS = {"prefilled", "default", "suggested", "manual", "edited", "blank"}
 EVENT_TYPES = {"step_entered", "step_completed", "field", "validation_failed"}
 
 
 # PUBLIC_INTERFACE
-def start(conn, user: dict, scenario: str | None = None) -> dict:
-    """Create a session and record entry into the first step."""
+def start(conn, user: dict, scenario: str | None = None, mode: str = "assistant",
+          participant_id: str | None = None) -> dict:
+    """Create a session and record entry into the first step.
+
+    ``mode`` is ``assistant`` (AI-assisted flow) or ``plain`` (form only, for like-for-like timing);
+    ``participant_id`` tags the test participant for the timed user test.
+    """
+    if mode not in ("assistant", "plain"):
+        raise ApiError(422, "invalid_mode", "mode must be 'assistant' or 'plain'.")
     sid, now = str(uuid.uuid4()), db.now()
-    conn.execute("INSERT INTO sessions(id,actor,started,status,current_step,scenario,user_group) "
-                 "VALUES(?,?,?,?,?,?,?)", (sid, user["id"], now, "active", STEPS[0], scenario, user["user_group"]))
+    conn.execute("INSERT INTO sessions(id,actor,started,status,current_step,scenario,user_group,mode,participant_id) "
+                 "VALUES(?,?,?,?,?,?,?,?,?)", (sid, user["id"], now, "active", STEPS[0], scenario,
+                                              user["user_group"], mode, (participant_id or "").strip() or None))
     conn.execute("INSERT INTO step_events(session_id,step,event_type,at) VALUES(?,?,?,?)",
                  (sid, STEPS[0], "step_entered", now))
     conn.commit()
-    return {"session_id": sid, "started": now, "status": "active"}
+    return {"session_id": sid, "started": now, "status": "active", "mode": mode}
 
 
 def get_open(conn, session_id: str, user: dict) -> dict:

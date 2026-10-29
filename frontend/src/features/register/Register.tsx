@@ -16,9 +16,17 @@ interface State {
   textLang: string;
   summary: any | null;
   summaryFailed: string | null;
+  analysedText: string;
+  email: string;
+  participant: string;
+  scenarioTag: string;
+  mode: "assistant" | "plain";
+  emailNote: any | null;
+  decisions: Record<string, { decision: "confirm" | "reject"; reason: string }>;
   cls: any | null;
   clsFailed: string | null;
   rootCause: string;
+  causeOrigin: string;
   otherReason: string;
   repeat: any | null;
   sessionId: string | null;
@@ -27,7 +35,7 @@ interface State {
 
 const init: State = {
   step: 0, q: "", search: null, customerId: null, ctx: null, fields: {}, text: "", textLang: "auto", summary: null,
-  summaryFailed: null, cls: null, clsFailed: null, rootCause: "", otherReason: "", repeat: null, sessionId: null, saved: null,
+  summaryFailed: null, analysedText: "", email: "", participant: "", scenarioTag: "", mode: "assistant", emailNote: null, decisions: {}, cls: null, clsFailed: null, rootCause: "", causeOrigin: "manual", otherReason: "", repeat: null, sessionId: null, saved: null,
 };
 
 // Stepper state is kept in sessionStorage so a page reload does not lose the registration in progress.
@@ -62,6 +70,12 @@ export default function Register({ onViewHistory, config }: { onViewHistory: () 
   const label = (o: any) => (o ? o[lang] || o.en : "");
   const causes: any[] = config?.root_causes || [];
   const cause = causes.find((c) => c.id === s.rootCause);
+  // Two-level taxonomy: show "Category › sub-cause" (FR-11); "Other" stands alone.
+  const causeLabel = (c: any) => {
+    if (!c) return "";
+    const cat = (config?.categories || []).find((x: any) => x.id === c.level1);
+    return cat && c.id !== "other" ? `${label(cat)} › ${label(c)}` : label(c);
+  };
 
   const run = async <T,>(fn: () => Promise<T>): Promise<T | undefined> => {
     setBusy(true);
@@ -73,6 +87,17 @@ export default function Register({ onViewHistory, config }: { onViewHistory: () 
 
   // Best-effort session/event logging: never blocks the user.
   const ev = (body: object) => { if (s.sessionId) post(`/api/sessions/${s.sessionId}/events`, body).catch(() => undefined); };
+  const plain = s.mode === "plain";
+  const next = async () => {
+    if (plain && s.step === 2 && !s.summary) set({ summary: emptySummary });   // form only: no AI call
+    if (!plain && s.step === 2 && s.text.trim() && s.analysedText !== s.text) {
+      setBusy(true); setErr(null);
+      try { await analyse(); }
+      catch (e) { setErr(e instanceof ApiError ? e.message : String(e)); setBusy(false); return; }
+      setBusy(false);
+    }
+    goto(s.step + 1);
+  };
   const goto = (n: number) => {
     ev({ type: "step_completed", step: STEPS[s.step] });
     ev({ type: "step_entered", step: STEPS[n] });
@@ -91,8 +116,17 @@ export default function Register({ onViewHistory, config }: { onViewHistory: () 
     set({ search: r });
   });
 
+  // FR-02: pasted email -> identifiers (checked against the customer data) + complaint text; then search.
+  const extractEmail = () => run(async () => {
+    const r = await post("/api/complaints/extract", { text: s.email });
+    if (r.ai_status !== "ok") { set({ emailNote: { failed: r.error_category || "unavailable" } }); return; }
+    const x = r.result, v = x.validation || {};
+    const q = (v.customer_number && x.customer_number) || (v.order_reference && x.order_reference) || (v.container && x.container) || "";
+    set({ text: x.description, textLang: x.language, emailNote: { x, q }, q: q || s.q, search: q ? await get("/api/customers/search", { q }) : null });
+  });
+
   const selectCandidate = (c: any) => run(async () => {
-    const sid = s.sessionId || (await post("/api/sessions")).session_id;
+    const sid = s.sessionId || (await post("/api/sessions", { scenario: s.scenarioTag || null, mode: s.mode, participant_id: s.participant || null })).session_id;
     const ctx = await get(`/api/customers/${c.customer_id}/context`);
     const pf = await post("/api/prefill", {
       customer_id: c.customer_id, site_id: c.matched_site_id, order_id: c.matched_order_id,
@@ -102,29 +136,68 @@ export default function Register({ onViewHistory, config }: { onViewHistory: () 
     post(`/api/sessions/${sid}/events`, { type: "step_entered", step: "review_details" }).catch(() => undefined);
   });
 
-  const changeType = (v: string) => run(async () => {
+  // Fields the user typed or edited survive a re-prefill; everything system-filled is recomputed.
+  const keepManual = (skip: string[] = []) => Object.fromEntries(
+    Object.entries(s.fields).filter(([k, f]) => (f.provenance === "manual" || f.provenance === "edited") && !skip.includes(k)));
+
+  // Choosing a type (by the user or accepting the AI suggestion) applies that type's defaults.
+  const applyType = async (v: string, provenance: "manual" | "suggested") => {
     const pf = await post("/api/prefill", {
       customer_id: s.customerId, site_id: val("site_id") || null, order_id: val("order_id") || null, complaint_type: v,
-      current_fields: Object.fromEntries(Object.entries(s.fields).filter(([, f]) => f.provenance === "manual" || f.provenance === "edited")),
+      current_fields: keepManual(["complaint_type"]),
     });
-    set({ fields: { ...pf.fields, complaint_type: { value: v, provenance: "manual" } } });
+    set({ fields: { ...pf.fields, complaint_type: { value: v, provenance } } });
+  };
+  const changeType = (v: string) => run(() => applyType(v, "manual"));
+
+  // A newly chosen site pulls in its contract, most recent order and container.
+  const changeSite = (v: string) => run(async () => {
+    const prev = s.fields.site_id?.provenance;
+    const pf = await post("/api/prefill", {
+      customer_id: s.customerId, site_id: v || null, order_id: null, complaint_type: val("complaint_type") || null,
+      current_fields: keepManual(["site_id", "contract_id", "order_id", "container"]),
+    });
+    const provenance = prev === "prefilled" || prev === "default" || prev === "edited" ? "edited" : "manual";
+    set({ fields: { ...pf.fields, site_id: { value: v || null, provenance } } });
+    ev({ type: "field", field: "site_id", origin: provenance, changed: true });
   });
 
-  const summarise = () => run(async () => {
-    const r = await post("/api/complaints/summarise", {
-      text: s.text, language: s.textLang === "auto" ? null : s.textLang, site_id: val("site_id") || null, session_id: s.sessionId,
-    });
-    if (r.ai_status === "ok") set({ summary: { ...r.result, mock: r.mock }, summaryFailed: null });
-    else set({ summaryFailed: r.error_category || "unavailable", summary: s.summary || { what: "", where: "", when: "", impact: "" } });
-  });
+  const changeOrder = (v: string) => {
+    const order = s.ctx?.orders.find((o: any) => o.id === v);
+    const prev = s.fields.order_id?.provenance;
+    const provenance = prev === "prefilled" || prev === "default" || prev === "edited" ? "edited" : "manual";
+    set({ fields: { ...s.fields, order_id: { value: v || null, provenance },
+                    container: { value: order?.container || null, provenance: order ? "prefilled" : "blank" } } });
+    ev({ type: "field", field: "order_id", origin: provenance, changed: true });
+  };
 
-  const classify = () => run(async () => {
-    const r = await post("/api/complaints/classify", { text: s.text, summary: s.summary, session_id: s.sessionId });
+  const emptySummary = { what: "", where: "", when: "", impact: "", extras: {} };
+
+  // One AI call when leaving Describe: structured summary + type + top-3 causes together.
+  const analyse = async () => {
+    const r = await post("/api/complaints/analyze", {
+      text: s.text, language: s.textLang === "auto" ? null : s.textLang, site_id: val("site_id") || null,
+      complaint_type: val("complaint_type") || null, session_id: s.sessionId,
+    });
     if (r.ai_status === "ok") {
-      const patch: Partial<State> = { cls: r, clsFailed: null, rootCause: r.preselect || "" };
-      if (r.result.complaint_type && !val("complaint_type")) patch.fields = { ...s.fields, complaint_type: { value: r.result.complaint_type, provenance: "prefilled" } };
-      set(patch);
-    } else set({ cls: null, clsFailed: r.error_category || "unavailable" });
+      const { summary, classification } = r.result;
+      set({ summary: { ...summary, mock: r.mock }, summaryFailed: null, cls: { ...r, result: classification }, clsFailed: null,
+            rootCause: r.preselect || "", causeOrigin: r.preselect ? "suggested" : "manual", analysedText: s.text });
+      if (classification.complaint_type && !val("complaint_type")) await applyType(classification.complaint_type, "suggested");
+    } else {
+      const cat = r.error_category || "unavailable";
+      set({ summary: s.summary || emptySummary, summaryFailed: cat, cls: null, clsFailed: cat, analysedText: s.text });
+    }
+  };
+
+  // The user picked another type after the analysis: apply its defaults and refresh only the type-specific fields.
+  const retype = (v: string) => run(async () => {
+    await applyType(v, "manual");
+    if (s.text.trim() && s.summary) {
+      const r = await post("/api/complaints/summarise", { text: s.text, language: s.textLang === "auto" ? null : s.textLang,
+        site_id: val("site_id") || null, complaint_type: v, session_id: s.sessionId });
+      if (r.ai_status === "ok") set({ summary: { ...s.summary, extras: r.result.extras } });
+    }
   });
 
   const checkRepeat = () => run(async () => {
@@ -143,7 +216,19 @@ export default function Register({ onViewHistory, config }: { onViewHistory: () 
   const missing = [
     ["description", s.text], ["complaint_type", val("complaint_type")], ["root_cause", s.rootCause], ["channel", val("channel")],
     ...(s.rootCause === "other" ? [["other_reason", s.otherReason]] : []),
+    ...Object.entries(s.decisions).filter(([, d]) => d.decision === "reject" && d.reason.trim().length < 3).map(([id]) => ["repeat_reason", ""]),
   ].filter(([, v]) => !String(v || "").trim()).map(([k]) => k);
+
+  // Origin of each tracked field at save time; drives the prefill-rate metric (PRD: prefilled or defaulted).
+  const finalProvenance = () => {
+    const p: Record<string, string> = {};
+    for (const k of ["customer_id", "site_id", "contract_id", "order_id", "container", "channel", "registration_date",
+      "registering_user", "priority", "status", "owner_team", "complaint_type"]) p[k] = s.fields[k]?.provenance || "blank";
+    p.root_cause = s.rootCause ? s.causeOrigin : "blank";
+    p.description = s.text ? "manual" : "blank";
+    p.summary = s.summary ? "suggested" : "blank";
+    return p;
+  };
 
   const save = () => run(async () => {
     const r = await post("/api/complaints", {
@@ -152,7 +237,13 @@ export default function Register({ onViewHistory, config }: { onViewHistory: () 
       root_cause: s.rootCause, other_reason: s.rootCause === "other" ? s.otherReason : null, description: s.text,
       language: s.textLang === "auto" ? s.summary?.language || null : s.textLang, summary: s.summary,
       summary_meta: s.summary ? { mock: !!s.summary.mock } : null, session_id: s.sessionId,
+      priority: val("priority") || null, owner_team: val("owner_team") || null, field_provenance: finalProvenance(),
     });
+    // FR-13: the rule outcome is stored as is; the user's confirm/dispute decisions are stored next to it.
+    for (const [prior, d] of Object.entries(s.decisions)) {
+      await post("/api/repeat-disputes", { complaint_id: r.id, prior_complaint_id: prior, decision: d.decision,
+        reason: d.reason.trim() || t("repeat.confirmed_default") }).catch(() => undefined);
+    }
     set({ saved: r });
   });
 
@@ -166,13 +257,20 @@ export default function Register({ onViewHistory, config }: { onViewHistory: () 
       </section>
     );
 
-  const filtered = (f: string) => causes.filter((c) => !f || `${c.en} ${c.nl} ${c.id}`.toLowerCase().includes(f.toLowerCase()));
+  const filtered = (f: string) => causes.filter((c) => !f || `${causeLabel(c)} ${c.en} ${c.nl} ${c.id}`.toLowerCase().includes(f.toLowerCase()));
   const selectFields = (k: string, items: any[], text: (i: any) => string) => (
     <select id={k} value={val(k)} onChange={(e) => setField(k, e.target.value)}>
       <option value="">{t("choose")}</option>
       {items.map((i) => <option key={i.id} value={i.id}>{text(i)}</option>)}
     </select>
   );
+  const optionSelect = (k: string, options: string[]) => (
+    <select id={k} value={val(k)} onChange={(e) => setField(k, e.target.value)}>
+      <option value="">{t("choose")}</option>
+      {options.map((o) => <option key={o} value={o}>{o}</option>)}
+    </select>
+  );
+  const opts = config?.field_options || {};
   const row = (k: string, input: JSX.Element) => (
     <div className="row"><label htmlFor={k}>{t(`f.${k}`)}</label>{input}<Prov p={s.fields[k]?.provenance || "blank"} /></div>
   );
@@ -191,6 +289,31 @@ export default function Register({ onViewHistory, config }: { onViewHistory: () 
             <input id="q" value={s.q} onChange={(e) => set({ q: e.target.value })} maxLength={100} />
             <button disabled={busy || !s.q.trim()}>{t("search")}</button>
           </form>
+          <details className="card" open={!!s.participant || !!s.scenarioTag || plain}>
+            <summary>{t("test.title")}</summary>
+            <div className="inline">
+              <label>{t("ut.participant")}<input value={s.participant} maxLength={40} disabled={!!s.sessionId} onChange={(e) => set({ participant: e.target.value })} /></label>
+              <label>{t("ut.scenario")}<input value={s.scenarioTag} maxLength={20} disabled={!!s.sessionId} onChange={(e) => set({ scenarioTag: e.target.value })} /></label>
+              <label>{t("test.mode")}
+                <select value={s.mode} disabled={!!s.sessionId} onChange={(e) => set({ mode: e.target.value as "assistant" | "plain" })}>
+                  <option value="assistant">{t("mode.assistant")}</option><option value="plain">{t("mode.plain")}</option>
+                </select></label>
+            </div>
+            <p className="muted">{t("test.note")}</p>
+          </details>
+          <details className="card" open={!!s.email}>
+            <summary>{t("email.title")}</summary>
+            <textarea aria-label={t("email.paste")} rows={5} maxLength={8000} value={s.email} onChange={(e) => set({ email: e.target.value })} />
+            <button className="secondary" disabled={busy || !s.email.trim()} onClick={extractEmail}>{t("email.extract")}</button>
+            {s.emailNote?.failed && <p className="warn">{t("ai.failed", { cat: s.emailNote.failed })}</p>}
+            {s.emailNote?.x && (
+              <p className={s.emailNote.q ? "ok" : "warn"}>
+                {s.emailNote.q ? t("email.found", { q: s.emailNote.q }) : t("email.none")}
+                {" "}{[["customer_number", s.emailNote.x.customer_number], ["order_reference", s.emailNote.x.order_reference], ["container", s.emailNote.x.container]]
+                  .filter(([, v]) => v).map(([k, v]) => `${v} ${s.emailNote.x.validation?.[k as string] ? "✓" : "✗"}`).join(" · ")}
+              </p>
+            )}
+          </details>
           {s.search?.match_type === "none" && <p className="warn">{t("search.none")}</p>}
           {s.search?.ambiguous && <p className="warn">{t("search.ambiguous", { n: s.search.count })}</p>}
           {s.search?.candidates?.map((c: any) => (
@@ -208,16 +331,30 @@ export default function Register({ onViewHistory, config }: { onViewHistory: () 
           <div>
             {row("customer_name", <span>{val("customer_name")}</span>)}
             {row("customer_number", <span>{val("customer_number")}</span>)}
-            {row("site_id", selectFields("site_id", s.ctx.sites, (i) => `${i.name} (${i.reference})`))}
+            {row("site_id", (
+              <select id="site_id" value={val("site_id")} onChange={(e) => changeSite(e.target.value)}>
+                <option value="">{t("choose")}</option>
+                {s.ctx.sites.map((i: any) => <option key={i.id} value={i.id}>{`${i.name} (${i.reference})`}</option>)}
+              </select>
+            ))}
             {row("contract_id", selectFields("contract_id", s.ctx.contracts.filter((c: any) => !val("site_id") || c.site_id === val("site_id")), (i) => i.reference))}
-            {row("order_id", selectFields("order_id", s.ctx.orders.filter((o: any) => !val("site_id") || o.site_id === val("site_id")), (i) => `${i.reference} · ${i.container}`))}
-            {row("channel", <input id="channel" value={val("channel")} onChange={(e) => setField("channel", e.target.value)} />)}
+            {row("order_id", (
+              <select id="order_id" value={val("order_id")} onChange={(e) => changeOrder(e.target.value)}>
+                <option value="">{t("choose")}</option>
+                {s.ctx.orders.filter((o: any) => !val("site_id") || o.site_id === val("site_id")).map((i: any) => <option key={i.id} value={i.id}>{`${i.reference} · ${i.container}`}</option>)}
+              </select>
+            ))}
+            {row("container", <span>{val("container") || "–"}</span>)}
+            {row("channel", optionSelect("channel", opts.channel || []))}
             {row("complaint_type", (
               <select id="complaint_type" value={val("complaint_type")} onChange={(e) => changeType(e.target.value)}>
                 <option value="">{t("choose")}</option>
                 {(config?.types || []).map((x: any) => <option key={x.id} value={x.id}>{label(x)}</option>)}
               </select>
             ))}
+            {row("priority", optionSelect("priority", opts.priority || []))}
+            {row("owner_team", optionSelect("owner_team", opts.owner_team || []))}
+            {row("status", <span>{val("status") || "–"}</span>)}
             {row("registering_user", <span>{val("registering_user")}</span>)}
             {row("registration_date", <span>{val("registration_date")}</span>)}
           </div>
@@ -239,9 +376,14 @@ export default function Register({ onViewHistory, config }: { onViewHistory: () 
             <select id="tl" value={s.textLang} onChange={(e) => set({ textLang: e.target.value })}>
               <option value="auto">{t("lang.auto")}</option><option value="nl">NL</option><option value="en">EN</option>
             </select>
-            <button disabled={busy || !s.text.trim()} onClick={summarise}>{t("summarise")}</button>
           </div>
-          {s.summaryFailed && <p className="warn">{t("ai.failed", { cat: s.summaryFailed })}</p>}
+          <p className="muted">{t("describe.hint")}</p>
+        </div>
+      )}
+
+      {s.step === 3 && (
+        <div>
+          {(s.summaryFailed || s.clsFailed) && <p className="warn">{t("ai.failed", { cat: s.summaryFailed || s.clsFailed || "" })}</p>}
           {s.summary && (
             <div className="card">
               <h3>{t("summary")} {s.summary.mock && <span className="badge mock">{t("ai.mock")}</span>}</h3>
@@ -252,36 +394,46 @@ export default function Register({ onViewHistory, config }: { onViewHistory: () 
                     onChange={(e) => set({ summary: { ...s.summary, [k]: e.target.value || null } })} />
                 </div>
               ))}
+              {(config?.summary?.by_type?.[val("complaint_type")] || []).map((k: string) => (
+                <div className="row" key={k}>
+                  <label htmlFor={`x-${k}`}>{config.summary.extra_labels?.[k]?.[lang] || k}</label>
+                  <input id={`x-${k}`} value={s.summary.extras?.[k] || ""} placeholder={t("summary.unknown")}
+                    onChange={(e) => set({ summary: { ...s.summary, extras: { ...(s.summary.extras || {}), [k]: e.target.value || null } } })} />
+                </div>
+              ))}
             </div>
           )}
-        </div>
-      )}
-
-      {s.step === 3 && (
-        <div>
-          <button disabled={busy || !s.text.trim()} onClick={classify}>{t("classify")}</button>
-          {s.clsFailed && <p className="warn">{t("ai.failed", { cat: s.clsFailed })}</p>}
+          <div className="row">
+            <label htmlFor="type-cls">{t("f.complaint_type")}</label>
+            <select id="type-cls" value={val("complaint_type")} onChange={(e) => retype(e.target.value)}>
+              <option value="">{t("choose")}</option>
+              {(config?.types || []).map((x: any) => <option key={x.id} value={x.id}>{label(x)}</option>)}
+            </select>
+            <Prov p={s.fields.complaint_type?.provenance || "blank"} />
+          </div>
           {s.cls && (
             <div className="card">
-              <h3>{t("classify.cands")} <span className="badge mock">{t("ai.mock")}</span></h3>
+              <h3>{t("classify.cands")} {s.cls.mock && <span className="badge mock">{t("ai.mock")}</span>}</h3>
               {s.cls.low_confidence && <p className="warn">{t("classify.low")}</p>}
               {s.cls.result.candidates.map((c: any) => (
                 <label key={c.root_cause_id} className="radio">
-                  <input type="radio" name="rc" checked={s.rootCause === c.root_cause_id} onChange={() => set({ rootCause: c.root_cause_id })} />
-                  {label(causes.find((x) => x.id === c.root_cause_id))} <span className="muted">({Math.round(c.confidence * 100)}% – {c.reason})</span>
+                  <input type="radio" name="rc-top" checked={s.rootCause === c.root_cause_id} onChange={() => set({ rootCause: c.root_cause_id, causeOrigin: "suggested" })} />
+                  {causeLabel(causes.find((x) => x.id === c.root_cause_id))} <span className="muted">({Math.round(c.confidence * 100)}% – {c.reason})</span>
                 </label>
               ))}
               <p className="muted">{t("classify.note")}</p>
             </div>
           )}
+          {plain ? <p className="muted">{t("mode.plain_note")}</p>
+            : <button className="secondary" disabled={busy || !s.text.trim()} onClick={() => run(analyse)}>{t("classify")}</button>}
           <h3>{t("classify.all")}</h3>
           <label htmlFor="cf">{t("classify.search")}</label>
           <input id="cf" value={filter} onChange={(e) => setFilter(e.target.value)} />
           <div className="list">
             {filtered(filter).map((c) => (
               <label key={c.id} className="radio">
-                <input type="radio" name="rc" checked={s.rootCause === c.id} onChange={() => set({ rootCause: c.id })} />
-                {label(c)}
+                <input type="radio" name="rc" checked={s.rootCause === c.id} onChange={() => set({ rootCause: c.id, causeOrigin: "manual" })} />
+                {causeLabel(c)}
               </label>
             ))}
           </div>
@@ -301,7 +453,24 @@ export default function Register({ onViewHistory, config }: { onViewHistory: () 
             <>
               {s.repeat.missing_fields?.length > 0 && <p className="warn">{t("repeat.missing", { f: s.repeat.missing_fields.join(", ") })}</p>}
               <p className={s.repeat.is_repeat ? "warn" : "ok"}>{s.repeat.is_repeat ? t("repeat.yes", { n: s.repeat.count }) : t("repeat.no")}</p>
-              <ul>{s.repeat.matches.map((m: any) => <li key={m.id}>{m.id} · {String(m.date || m.created || "").slice(0, 10)} · {m.cause || m.root_cause} · {m.status} {m.reason && <span className="muted">({m.reason})</span>}</li>)}</ul>
+              <ul>{s.repeat.matches.map((m: any) => {
+                const d = s.decisions[m.id];
+                const setD = (patch: Partial<{ decision: "confirm" | "reject"; reason: string }>) =>
+                  set({ decisions: { ...s.decisions, [m.id]: { ...(d || { decision: "confirm" as const, reason: "" }), ...patch } } });
+                return (
+                  <li key={m.id}>
+                    {m.id} · {String(m.date || m.created || "").slice(0, 10)} · {m.cause || m.root_cause} · {m.status} {m.reason && <span className="muted">({m.reason})</span>}
+                    <div className="inline">
+                      <label><input type="radio" name={`d-${m.id}`} checked={d?.decision === "confirm"} onChange={() => setD({ decision: "confirm" })} /> {t("repeat.confirm")}</label>
+                      <label><input type="radio" name={`d-${m.id}`} checked={d?.decision === "reject"} onChange={() => setD({ decision: "reject" })} /> {t("repeat.reject")}</label>
+                      {d?.decision === "reject" && (
+                        <input aria-label={t("repeat.reason")} placeholder={t("repeat.reason")} maxLength={500} value={d.reason} onChange={(e) => setD({ reason: e.target.value })} />
+                      )}
+                    </div>
+                  </li>
+                );
+              })}</ul>
+              <p className="muted">{t("repeat.decision_note")}</p>
               <p className="muted">{t("repeat.rule", { v: s.repeat.rule_version, d: s.repeat.lookback_days })} · {s.repeat.checked_at}</p>
             </>
           ) : t("loading")}
@@ -317,7 +486,7 @@ export default function Register({ onViewHistory, config }: { onViewHistory: () 
             <dt>{t("f.site_id")}</dt><dd>{s.ctx?.sites.find((x: any) => x.id === val("site_id"))?.name || "–"}</dd>
             <dt>{t("f.channel")}</dt><dd>{val("channel") || "–"}</dd>
             <dt>{t("f.complaint_type")}</dt><dd>{label((config?.types || []).find((x: any) => x.id === val("complaint_type"))) || "–"}</dd>
-            <dt>{t("col.cause")}</dt><dd>{label(cause) || "–"}{s.rootCause === "other" && `: ${s.otherReason}`}</dd>
+            <dt>{t("col.cause")}</dt><dd>{causeLabel(cause) || "–"}{s.rootCause === "other" && `: ${s.otherReason}`}</dd>
             <dt>{t("description")}</dt><dd>{s.text || "–"}</dd>
             {s.summary && <><dt>{t("summary")}</dt><dd>{["what", "where", "when", "impact"].map((k) => s.summary[k]).filter(Boolean).join(" · ")}</dd></>}
             <dt>{t("col.repeat")}</dt><dd>{s.repeat ? (s.repeat.is_repeat ? t("yes") : t("no")) : "–"}</dd>
@@ -330,7 +499,7 @@ export default function Register({ onViewHistory, config }: { onViewHistory: () 
       {s.step > 0 && (
         <div className="nav">
           <button className="secondary" onClick={() => goto(s.step - 1)}>{t("back")}</button>{" "}
-          {s.step < 5 && <button onClick={() => goto(s.step + 1)} disabled={busy}>{t("next")}</button>}
+          {s.step < 5 && <button onClick={next} disabled={busy}>{!plain && s.step === 2 && s.text.trim() && s.analysedText !== s.text ? t("next.analyse") : t("next")}</button>}
         </div>
       )}
     </section>

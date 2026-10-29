@@ -20,7 +20,7 @@ from . import db
 
 SEED_DIR = Path(__file__).resolve().parent / "seed_data"
 
-N_CUSTOMERS = 22
+N_CUSTOMERS = 34
 EXTRA_SITE_CUSTOMER = 3      # has a third site (multiple-site case)
 MISSING_DATA_CUSTOMER = 21   # one site, expired contract, no postcode, few orders
 
@@ -41,8 +41,15 @@ TEXTS = {
     "damage": ("De container is kapot.", "The container is damaged."),
     "invoice": ("De factuur klopt niet.", "The invoice is incorrect."),
     "conduct": ("De chauffeur was onbeleefd.", "The driver was rude."),
+    "access": ("De poort was afgesloten, de chauffeur kon er niet bij.", "The gate was locked, the driver could not reach the container."),
+    "comms": ("Er is niet teruggebeld na onze melding.", "Nobody called back after our report."),
     "other": ("Ongebruikelijke synthetische situatie.", "Unusual synthetic situation."),
 }
+GENERATED_FIRST_SEQ = len(HISTORY) + 1
+GENERATED_CAUSES = ["missed", "late", "damage", "access", "invoice", "conduct", "comms"]
+GENERATED_OTHER_REASONS = ["Missing recycling certificate (synthetic)", "Request for site visit (synthetic)",
+                           "Neighbour complaint about smell (synthetic)", "Question about waste legislation (synthetic)",
+                           "Wrong contact person on file (synthetic)"]
 OTHER_REASONS = {5: "Animal nest in container (synthetic)",
                  10: "Vandalised fence (synthetic)",
                  11: "Event road closure (synthetic)",
@@ -53,12 +60,26 @@ def _cause_meta():
     return {c["id"]: c for c in db.config()["root_causes"]}
 
 
+# Invented company names (no real businesses intended). Customers 1 and 2 share "Delta Works" on
+# purpose so the name search is ambiguous (T04); customer 21 is the missing-data case.
+NAMES = [
+    "Delta Works Recycling BV", "Delta Works Logistiek BV", "Bakkerij De Gouden Korst BV",
+    "Hoogendoorn Metaal BV", "Groenendaal Tuinbouw VOF", "Peeters Bouwmaterialen NV",
+    "Jansen Horeca Groep BV", "De Vries Installatietechniek BV", "Zorgcentrum Het Anker",
+    "Brouwer Transport BV", "Smit Schoonmaakdiensten BV", "Willems Aannemersbedrijf BV",
+    "Kuipers Bouwbedrijf BV", "Dekker Kunststoffen BV", "Van Leeuwen Elektro BV",
+    "Bos Fruitgroothandel BV", "De Jong Garagebedrijf BV", "Meijer Houthandel BV",
+    "Hendriks Installatiebedrijf BV", "Boerenhof Kaasmakerij VOF", "Noordkade Metaalhandel BV",
+    "Schouten Landbouwbedrijf VOF", "Vos Meubelfabriek BV", "Nijhuis Papierwaren BV",
+    "Oosterhout Voedingsmiddelen BV", "Dekkers Printhuis BV", "Van der Heijden Slagerij",
+    "Bloemendaal Tuincentrum BV", "Mol Verpakkingen BV", "De Schone Zaak Wasserij BV",
+    "Kuyper Autodemontage BV", "Rijnmond Scheepsservice BV", "Maasland Bouwlogistiek BV",
+    "Havenzicht Horeca BV",
+]
+
+
 def _cust_name(n: int) -> str:
-    if n < 3:
-        return f"Fictional Delta Works {n:02}"
-    if n >= 21:
-        return f"Fictional Noord Recycling {n:02}"
-    return f"Fictional Circular Works {n:02}"
+    return NAMES[n - 1]
 
 
 def _seed_reference(conn, stamp: str) -> None:
@@ -114,23 +135,43 @@ def _seed_customers(conn, anchor, stamp: str) -> None:
                      "in_progress" if k == 0 else "completed", f"ORD-{n:03}-{s}{k}"))
 
 
+def _generated_history() -> list:
+    """Deterministic extra history on customers 23-34 only, so scripted repeat cases are untouched.
+
+    About a third of these are "Other" (together with the hand-written rows this mimics the
+    ~40% "Other" baseline in the PRD).
+    """
+    rows = []
+    for i in range(30):
+        n = 23 + i % 12
+        other = i % 3 == 0 or i % 10 == 7
+        cause = "other" if other else GENERATED_CAUSES[i % len(GENERATED_CAUSES)]
+        rows.append((GENERATED_FIRST_SEQ + i, n, 1 + i % 2, cause, ["open", "closed", "closed"][i % 3],
+                     5 + (i * 17) % 165, "nl" if i % 2 else "en",
+                     GENERATED_OTHER_REASONS[i % len(GENERATED_OTHER_REASONS)] if other else ""))
+    return rows
+
+
 def _seed_history(conn, anchor) -> None:
     causes, cfg = _cause_meta(), db.config()
-    for seq, n, s, cause, status, days, lang in HISTORY:
+    rows = [(*h, OTHER_REASONS.get(h[0], "")) for h in HISTORY] + _generated_history()
+    for seq, n, s, cause, status, days, lang, reason in rows:
         c, site = f"C{n:03}", f"C{n:03}-S{s}"
         text = TEXTS[cause][0 if lang == "nl" else 1]
-        ctype = causes[cause]["level1"] if causes[cause]["level1"] != "other" else "conduct"
+        ctype = causes[cause].get("type") or "conduct"
         created = (anchor - timedelta(days=days)).isoformat()
-        payload = {"description": text, "synthetic": True, "complaint_type": ctype,
-                   "other_reason": OTHER_REASONS.get(seq, "")}
+        d = {**cfg["defaults"].get("_all", {}), **cfg["defaults"].get(ctype, {})}
+        payload = {"description": text, "synthetic": True, "complaint_type": ctype, "other_reason": reason}
         conn.execute(
             "INSERT INTO complaints(id,customer_id,site_id,contract_id,order_id,root_cause,created,"
             "status,session_id,payload,channel,registration_date,registering_user,original_text,"
-            "language,complaint_type,other_reason,taxonomy_version,is_poc,is_seed) "
-            "VALUES(?,?,?,?,?,?,?,?,NULL,?,?,?,?,?,?,?,?,?,1,1)",
+            "language,complaint_type,other_reason,taxonomy_version,is_poc,is_seed,priority,owner_team,"
+            "response_target_days,container,root_cause_category) VALUES(?,?,?,?,?,?,?,?,NULL,?,?,?,?,?,?,?,?,?,1,1,?,?,?,?,?)",
             (f"POC-SEED-{seq}", c, site, f"{c}-K{s}", f"{c}-O{s}0", cause, created, status,
-             json.dumps(payload), cfg["defaults"].get(ctype, {}).get("channel", "phone"), created,
-             "seed", text, lang, ctype, OTHER_REASONS.get(seq, ""), cfg["taxonomy_version"]))
+             json.dumps(payload), d.get("channel", "phone"), created, "seed", text, lang, ctype, reason,
+             cfg["taxonomy_version"], d.get("priority"), d.get("owner_team"),
+             int(d["response_target_days"]) if d.get("response_target_days") else None, f"BOX-{n:03}-{s}",
+             causes[cause]["level1"]))
 
 
 # PUBLIC_INTERFACE

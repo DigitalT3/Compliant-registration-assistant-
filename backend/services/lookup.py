@@ -1,5 +1,9 @@
-"""Customer lookup by customer number, order reference, container id or name (FR-01, FR-03)."""
+"""Customer lookup by customer number, order reference, container id, name or postcode (FR-01, FR-03)."""
+import re
+
 from ..errors import ApiError
+
+_POSTCODE = re.compile(r"^\d{4}[A-Z]{0,2}$")  # NL "3133KJ" / BE "2030"; spaces and case are ignored
 
 
 def _card(conn, cust, matched_site=None, matched_order=None) -> dict:
@@ -52,6 +56,20 @@ def search(conn, q: str) -> dict:
                             (_like(q),)).fetchall()
         if rows:
             mtype, cands = "name", [_card(conn, r) for r in rows]
+    if not cands:
+        pc = re.sub(r"\s+", "", q).upper()
+        if _POSTCODE.match(pc):
+            rows = conn.execute(
+                "SELECT DISTINCT c.* FROM customers c LEFT JOIN sites s ON s.customer_id=c.id "
+                "WHERE replace(upper(c.postcode),' ','') LIKE ? OR replace(upper(s.postcode),' ','') LIKE ? "
+                "ORDER BY c.name", (pc + "%", pc + "%")).fetchall()
+            if rows:
+                mtype, cands = "postcode", []
+                for r in rows:
+                    site = conn.execute("SELECT id FROM sites WHERE customer_id=? AND "
+                                        "replace(upper(postcode),' ','') LIKE ? ORDER BY id LIMIT 1",
+                                        (r["id"], pc + "%")).fetchone()
+                    cands.append(_card(conn, r, site and site["id"]))
     cands.sort(key=lambda c: c["last_order_date"] or "", reverse=True)
     return {"query": q, "match_type": mtype if cands else "none", "ambiguous": len(cands) > 1,
             "count": len(cands), "candidates": cands}

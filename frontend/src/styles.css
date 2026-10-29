@@ -70,6 +70,7 @@ label { display: grid; gap: .3rem; font-weight: 600; }
 .prov-prefilled { color: #0b5e40; background: #daf1e5; }
 .prov-default { color: #574600; background: #fff1be; }
 .prov-manual, .prov-edited { color: #234d75; background: #e0eefc; }
+.prov-suggested { color: #5a2d82; background: #efe3fa; }
 .prov-blank { color: #53635c; background: #e8ecea; }
 .badge.mock { color: #6a4600; background: #fff1be; }
 .radio { display: flex; align-items: baseline; gap: .5rem; padding: .35rem; font-weight: 400; }

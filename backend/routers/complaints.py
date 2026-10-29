@@ -25,6 +25,16 @@ class SummariseIn(BaseModel):
     language: Lang = None
     site_id: str | None = None
     customer_id: str | None = None
+    complaint_type: str | None = Field(None, description="Selects the summary template; optional")
+    session_id: str | None = None
+
+
+class AnalyzeIn(BaseModel):
+    """Complaint text for the single summary + classification call."""
+    text: str = Field(..., min_length=1, max_length=8000)
+    language: Lang = None
+    site_id: str | None = None
+    complaint_type: str | None = Field(None, description="If the user already chose a type, its template is used")
     session_id: str | None = None
 
 
@@ -61,6 +71,10 @@ class ComplaintIn(BaseModel):
     session_id: str | None = None
     scenario: str | None = None
     repeat_input_hash: str | None = None
+    priority: str | None = Field(None, max_length=30)
+    owner_team: str | None = Field(None, max_length=40)
+    field_provenance: dict[str, str] | None = Field(
+        None, description="Origin of each tracked field at save time (prefilled/default/suggested/manual/edited/blank)")
 
 
 @router.post("/api/complaints/extract", summary="Extract candidates from pasted email (Should)")
@@ -85,8 +99,48 @@ def summarise(body: SummariseIn, user: dict = Depends(require("register"))):
         if body.site_id:
             r = conn.execute("SELECT name FROM sites WHERE id=?", (body.site_id,)).fetchone()
             site_name = r and r["name"]
-        return ai.run(conn, "summarise", {"text": body.text, "language": body.language, "site_name": site_name},
+        return ai.run(conn, "summarise",
+                      {"text": body.text, "language": body.language, "site_name": site_name,
+                       "complaint_type": body.complaint_type,
+                       "template_extras_by_type": get_config()["summary"]["by_type"]},
                       body.session_id, user["id"])
+
+
+def _site_name(conn, site_id):
+    r = site_id and conn.execute("SELECT name FROM sites WHERE id=?", (site_id,)).fetchone()
+    return r["name"] if r else None
+
+
+def _decorate(out: dict, cfg: dict, cls_key: str | None) -> dict:
+    """Add taxonomy version, low-confidence flag and the (only if confident) preselected cause."""
+    out["taxonomy_version"] = cfg["taxonomy_version"]
+    if out["ai_status"] == "ok":
+        res = out["result"] if cls_key is None else out["result"][cls_key]
+        cands = res["candidates"]
+        top = cands[0]["confidence"] if cands else 0
+        low = top < cfg["classification"]["min_confidence"]
+        out.update({"low_confidence": low, "preselect": None if low else cands[0]["root_cause_id"],
+                    "min_confidence": cfg["classification"]["min_confidence"],
+                    "confidence_note": "Heuristic score, not a calibrated probability."})
+    return out
+
+
+@router.post("/api/complaints/analyze", summary="Summary and classification in one call")
+def analyze(body: AnalyzeIn, user: dict = Depends(require("register"))):
+    """Fast path used when leaving the Describe step: structured summary, type and top-three causes.
+
+    Returns ``result: {summary, classification}`` plus ``low_confidence``/``preselect``; on any AI fault
+    ``ai_status=failed`` is returned and manual registration continues.
+    """
+    cfg = get_config()
+    with connection() as conn:
+        out = ai.run(conn, "analyze",
+                     {"text": body.text, "language": body.language, "site_name": _site_name(conn, body.site_id),
+                      "complaint_type": body.complaint_type, "taxonomy": cfg["root_causes"],
+                      "types": [t["id"] for t in cfg["types"]],
+                      "template_extras_by_type": cfg["summary"]["by_type"]},
+                     body.session_id, user["id"])
+    return _decorate(out, cfg, "classification")
 
 
 @router.post("/api/complaints/classify", summary="Type and top-three root-cause candidates")
@@ -97,15 +151,7 @@ def classify(body: ClassifyIn, user: dict = Depends(require("register"))):
                "taxonomy": cfg["root_causes"], "types": [t["id"] for t in cfg["types"]]}
     with connection() as conn:
         out = ai.run(conn, "classify", payload, body.session_id, user["id"])
-    out["taxonomy_version"] = cfg["taxonomy_version"]
-    if out["ai_status"] == "ok":
-        cands = out["result"]["candidates"]
-        top = cands[0]["confidence"] if cands else 0
-        low = top < cfg["classification"]["min_confidence"]
-        out.update({"low_confidence": low, "preselect": None if low else cands[0]["root_cause_id"],
-                    "min_confidence": cfg["classification"]["min_confidence"],
-                    "confidence_note": "Heuristic score, not a calibrated probability."})
-    return out
+    return _decorate(out, cfg, None)
 
 
 @router.post("/api/complaints/check-repeat", summary="Deterministic repeat check")

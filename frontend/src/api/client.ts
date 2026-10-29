@@ -43,3 +43,17 @@ export async function api<T = any>(method: string, path: string, body?: unknown,
 export const get = <T = any>(p: string, params?: Record<string, any>) => api<T>("GET", p, undefined, params);
 export const post = <T = any>(p: string, b?: unknown) => api<T>("POST", p, b ?? {});
 export const put = <T = any>(p: string, b: unknown) => api<T>("PUT", p, b);
+
+/** Download a CSV export (the demo-user header cannot be sent by a plain link). */
+export async function download(path: string, filename: string, params?: Record<string, any>) {
+  const qs = params ? "?" + new URLSearchParams(Object.entries(params).filter(([, v]) => v).map(([k, v]) => [k, String(v)])).toString() : "";
+  const res = await fetch(`${BASE}${path}${qs}`, { headers: { "X-Demo-User": demoUser } });
+  if (!res.ok) {
+    const e = (await res.json().catch(() => ({})))?.error || {};
+    throw new ApiError(res.status, e.code || "error", e.message || res.statusText, e.request_id);
+  }
+  const url = URL.createObjectURL(await res.blob());
+  const a = document.createElement("a");
+  a.href = url; a.download = filename; a.click();
+  URL.revokeObjectURL(url);
+}

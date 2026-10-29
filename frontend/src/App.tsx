@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { ApiError, get, getDemoUser, post, put, setDemoUser } from "./api/client";
+import { ApiError, download, get, getDemoUser, post, put, setDemoUser } from "./api/client";
 import { I18nProvider, useI18n } from "./i18n";
 import Register from "./features/register/Register";
 
@@ -181,16 +181,32 @@ function Dashboard() {
   const { t } = useI18n();
   const [summary, setSummary] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
+  const [groupBy, setGroupBy] = useState("group");
+  const [mode, setMode] = useState("");
 
   useEffect(() => {
-    get("/api/analytics/summary")
-      .then(setSummary)
+    get("/api/analytics/summary", { group_by: groupBy, mode })
+      .then((r) => { setSummary(r); setError(null); })
       .catch((cause) => setError(cause instanceof ApiError ? cause.message : String(cause)));
-  }, []);
+  }, [groupBy, mode]);
+
+  const filters = (
+    <div className="inline">
+      <label>{t("dash.group_by")}
+        <select value={groupBy} onChange={(e) => setGroupBy(e.target.value)}>
+          {["group", "mode", "scenario", "participant"].map((g) => <option key={g} value={g}>{t(`dash.by.${g}`)}</option>)}
+        </select></label>
+      <label>{t("dash.mode")}
+        <select value={mode} onChange={(e) => setMode(e.target.value)}>
+          <option value="">{t("dash.all")}</option><option value="assistant">{t("mode.assistant")}</option><option value="plain">{t("mode.plain")}</option>
+        </select></label>
+      <button className="secondary" onClick={() => download("/api/export/sessions.csv", "sessions.csv", { mode }).catch((c) => setError(String(c.message || c)))}>{t("dash.export")}</button>
+    </div>
+  );
 
   if (error) return <section><h2>{t("dash.title")}</h2><p className="warn">{t("dash.forbidden")}</p><ErrorMessage error={error} /></section>;
   if (!summary) return <section><h2>{t("dash.title")}</h2><p>{t("loading")}</p></section>;
-  if (summary.empty) return <section><h2>{t("dash.title")}</h2><p className="empty">{t("dash.empty")}</p></section>;
+  if (summary.empty) return <section><h2>{t("dash.title")}</h2>{filters}<p className="empty">{t("dash.empty")}</p></section>;
 
   const rates = [
     ["Save", summary.sessions.save_rate],
@@ -202,17 +218,38 @@ function Dashboard() {
   ];
   const causes = Object.entries(summary.classification.by_root_cause || {}) as [string, number][];
   const maxCause = Math.max(1, ...causes.map(([, count]) => count));
+  const d = summary.duration_seconds;
+  const fmt = (id: string, v: number | null) => v === null ? "–" : ["time", "daily_use"].includes(id) ? String(Math.round(v * 10) / 10) : `${Math.round(v * 100)}%`;
 
   return (
     <section>
       <h2>{t("dash.title")}</h2>
       <p className="muted">{summary.definitions.synthetic}</p>
+      {filters}
       <div className="metric-grid">
         <Metric label={t("dash.sessions")} value={summary.sessions.started} note={`${summary.sessions.saved} saved`} />
-        <Metric label={t("dash.duration")} value={summary.duration_seconds.mean ?? "–"} note={t("dash.n", { n: summary.duration_seconds.n })} />
-        <Metric label="Median" value={summary.duration_seconds.median ?? "–"} note={t("dash.n", { n: summary.duration_seconds.n })} />
-        <Metric label="AI" value={formatRate(summary.ai.success_rate)} note={summary.ai.mock_note} />
+        <Metric label={t("dash.duration")} value={d.mean ?? "–"} note={t("dash.n", { n: d.n })} />
+        <Metric label="Median" value={d.median ?? "–"} note={t("dash.n", { n: d.n })} />
+        <Metric label={t("dash.baseline")} value={d.baseline_seconds ?? "–"}
+          note={d.baseline_seconds ? `${t("dash.n", { n: d.baseline_n })} · ${d.faster_than_baseline === null ? "" : `${Math.round(d.faster_than_baseline * 100)}% ${t("dash.faster")}`}` : t("dash.no_baseline")} />
       </div>
+      <article className="card">
+        <h3>{t("dash.targets")}</h3>
+        <table><thead><tr><th>{t("dash.target")}</th><th>{t("dash.value")}</th><th>n</th><th>{t("dash.status")}</th></tr></thead>
+          <tbody>{summary.targets.map((x: any) => (
+            <tr key={x.id}><td>{x.target}</td><td>{fmt(x.id, x.value)}</td><td>{x.n}</td>
+              <td><span className={`badge ${x.status === "met" ? "prov-prefilled" : x.status === "not_met" ? "prov-default" : "prov-blank"}`}>{t(`status.${x.status}`)}</span>{x.indicative && <small className="muted"> {t("dash.indicative")}</small>}</td></tr>
+          ))}</tbody></table>
+      </article>
+      {summary.groups && (
+        <article className="card">
+          <h3>{t("dash.groups", { by: t(`dash.by.${groupBy}`) })}</h3>
+          <table><thead><tr><th>{t(`dash.by.${groupBy}`)}</th><th>{t("dash.sessions")}</th><th>{t("dash.duration")}</th><th>Other</th><th>Repeat</th></tr></thead>
+            <tbody>{Object.entries(summary.groups).map(([k, g]: [string, any]) => (
+              <tr key={k}><td>{k}</td><td>{g.sessions} ({g.saved} saved)</td><td>{g.mean_duration ?? "–"} ({t("dash.n", { n: g.n_duration })})</td><td>{formatRate(g.other_share)}</td><td>{formatRate(g.repeat_rate)}</td></tr>
+            ))}</tbody></table>
+        </article>
+      )}
       <div className="dashboard-grid">
         <article className="card">
           <h3>{t("dash.rates")}</h3>
@@ -265,11 +302,73 @@ function RootCauses({ config }: { config: any }) {
             <h3>{cause[lang]} <span className="muted">({cause.id})</span></h3>
             <p><b>{t("ref.definition")}:</b> {cause.definition}</p>
             <p><b>{t("ref.examples")}:</b> {cause.examples || "–"}</p>
-            <p className="muted">{cause.level1}{cause.level2 ? ` / ${cause.level2}` : ""}</p>
+            <p className="muted">{(config.categories || []).find((x: any) => x.id === cause.level1)?.[lang] || cause.level1}{cause.level2 ? ` › ${cause.level2}` : ""}</p>
           </article>
         ))}
       </div>
     </section>
+  );
+}
+
+function UserTestData({ config, onChanged }: { config: any; onChanged: () => void }) {
+  const { t, lang } = useI18n();
+  const [base, setBase] = useState({ user_group: "group_a", scenario: "", participant_id: "", seconds: "", note: "" });
+  const [exit, setExit] = useState({ participant_id: "", would_use_daily: true, comment: "" });
+  const [sample, setSample] = useState<any[]>([]);
+  const [labels, setLabels] = useState<Record<string, { cause: string; usable: boolean }>>({});
+  const [msg, setMsg] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const fail = (c: unknown) => setErr(c instanceof ApiError ? c.message : String(c));
+  const loadSample = () => get<any>("/api/evaluations/sample", { limit: 10 }).then((r) => setSample(r.items)).catch(fail);
+  useEffect(() => { loadSample(); }, []);
+  const groups = Array.from(new Set((config.demo_users || []).filter((u: any) => u.role === "employee").map((u: any) => u.group))) as string[];
+
+  return (
+    <article className="card">
+      <h3>{t("ut.title")}</h3>
+      <ErrorMessage error={err} />{msg && <p className="ok">{msg}</p>}
+      <form className="form-grid" onSubmit={(e) => { e.preventDefault(); setErr(null);
+        post("/api/baseline", { ...base, scenario: base.scenario || null, participant_id: base.participant_id || null, note: base.note || null, seconds: Number(base.seconds) })
+          .then(() => { setMsg(t("ut.recorded")); setBase({ ...base, seconds: "", note: "" }); onChanged(); }).catch(fail); }}>
+        <h4>{t("ut.baseline")}</h4>
+        <label>{t("ut.group")}<select value={base.user_group} onChange={(e) => setBase({ ...base, user_group: e.target.value })}>{groups.map((g) => <option key={g}>{g}</option>)}</select></label>
+        <label>{t("ut.scenario")}<input value={base.scenario} maxLength={20} onChange={(e) => setBase({ ...base, scenario: e.target.value })} /></label>
+        <label>{t("ut.participant")}<input value={base.participant_id} maxLength={40} onChange={(e) => setBase({ ...base, participant_id: e.target.value })} /></label>
+        <label>{t("ut.seconds")}<input required type="number" min="1" step="1" value={base.seconds} onChange={(e) => setBase({ ...base, seconds: e.target.value })} /></label>
+        <button>{t("eval.submit")}</button>
+      </form>
+      <form className="form-grid" onSubmit={(e) => { e.preventDefault(); setErr(null);
+        post("/api/exit-interviews", { ...exit, comment: exit.comment || null })
+          .then(() => { setMsg(t("ut.recorded")); setExit({ participant_id: "", would_use_daily: true, comment: "" }); onChanged(); }).catch(fail); }}>
+        <h4>{t("ut.exit")}</h4>
+        <label>{t("ut.participant")}<input required value={exit.participant_id} maxLength={40} onChange={(e) => setExit({ ...exit, participant_id: e.target.value })} /></label>
+        <label className="checkbox"><input type="checkbox" checked={exit.would_use_daily} onChange={(e) => setExit({ ...exit, would_use_daily: e.target.checked })} />{t("ut.daily")}</label>
+        <label>{t("ut.comment")}<input value={exit.comment} maxLength={500} onChange={(e) => setExit({ ...exit, comment: e.target.value })} /></label>
+        <button>{t("eval.submit")}</button>
+      </form>
+      <h4>{t("ut.blind")}</h4>
+      <p className="muted">{t("ut.blind_note")}</p>
+      <button className="secondary" onClick={() => download("/api/export/labels-sample.csv", "labels-sample.csv").catch(fail)}>{t("ut.export_labels")}</button>
+      {sample.length === 0 && <p className="empty">{t("eval.none")}</p>}
+      {sample.map((item) => {
+        const l = labels[item.id] || { cause: "", usable: true };
+        return (
+          <div className="card" key={item.id}>
+            <b>{item.id}</b> · {item.language}
+            <p>{item.description}</p>
+            {item.summary && <p className="muted">{["what", "where", "when", "impact"].map((k) => item.summary[k]).filter(Boolean).join(" · ")}</p>}
+            <div className="inline">
+              <select aria-label={t("eval.expert")} value={l.cause} onChange={(e) => setLabels({ ...labels, [item.id]: { ...l, cause: e.target.value } })}>
+                <option value="">{t("choose")}</option>{config.root_causes.map((c: any) => <option key={c.id} value={c.id}>{c[lang] || c.en}</option>)}
+              </select>
+              <label className="checkbox"><input type="checkbox" checked={l.usable} onChange={(e) => setLabels({ ...labels, [item.id]: { ...l, usable: e.target.checked } })} />{t("eval.useful")}</label>
+              <button disabled={!l.cause} onClick={() => post("/api/evaluations", { complaint_id: item.id, usable: l.usable, expert_cause: l.cause })
+                .then(() => { setMsg(t("ut.recorded")); loadSample(); onChanged(); }).catch(fail)}>{t("ut.save_label")}</button>
+            </div>
+          </div>
+        );
+      })}
+    </article>
   );
 }
 
@@ -310,6 +409,7 @@ function Evaluation({ config }: { config: any }) {
         <label className="checkbox"><input type="checkbox" checked={form.usable} onChange={(event) => setForm({ ...form, usable: event.target.checked })} />{t("eval.useful")}</label>
         <button>{t("eval.submit")}</button>{message && <span className="ok">{message}</span>}
       </form>
+      <UserTestData config={config} onChanged={load} />
       <article className="card">
         <h3>{t("eval.disputes")}</h3>
         {disputes.length ? <ul>{disputes.map((item) => <li key={item.id}>{item.complaint_id}: {item.decision} — {item.reason}</li>)}</ul> : <p className="empty">{t("eval.none")}</p>}

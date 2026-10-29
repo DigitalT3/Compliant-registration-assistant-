@@ -4,15 +4,58 @@
   "app": {
     "name": "Renewi Complaint Registration Assistant (PoC demonstrator)",
     "poc_mode": true,
-    "supported_languages": ["nl", "en"]
+    "supported_languages": [
+      "nl",
+      "en"
+    ]
   },
   "default_language": "nl",
-  "taxonomy_version": "provisional-taxonomy-v1",
-  "summary_template": "summary-v1",
+  "taxonomy_version": "provisional-taxonomy-v2",
+  "summary_template": "summary-v2",
   "summary": {
-    "template_version": "summary-v1",
+    "template_version": "summary-v2",
     "language_mode": "source",
-    "fields": ["what", "where", "when", "impact"]
+    "fields": [
+      "what",
+      "where",
+      "when",
+      "impact"
+    ],
+    "by_type": {
+      "service": [
+        "expected_vs_actual_service_date",
+        "container_no"
+      ],
+      "billing": [
+        "invoice_no",
+        "amount_disputed"
+      ],
+      "conduct": [
+        "who_or_vehicle_if_known"
+      ]
+    },
+    "extra_labels": {
+      "expected_vs_actual_service_date": {
+        "en": "Expected vs. actual service date",
+        "nl": "Verwachte versus werkelijke servicedatum"
+      },
+      "container_no": {
+        "en": "Container no.",
+        "nl": "Containernummer"
+      },
+      "invoice_no": {
+        "en": "Invoice no.",
+        "nl": "Factuurnummer"
+      },
+      "amount_disputed": {
+        "en": "Amount disputed",
+        "nl": "Betwist bedrag"
+      },
+      "who_or_vehicle_if_known": {
+        "en": "Who or vehicle (if known)",
+        "nl": "Wie of voertuig (indien bekend)"
+      }
+    }
   },
   "classification": {
     "version": "classification-v1",
@@ -22,9 +65,14 @@
   "ai": {
     "provider": "mock",
     "model": "mock-keyword-v1",
-    "timeout_s": 10,
-    "max_retries": 1,
-    "max_input_chars": 4000
+    "timeout_s": 3.5,
+    "max_retries": 0,
+    "max_input_chars": 4000,
+    "mock_patterns": {
+      "customer_number": "\\b(100\\d{3})\\b",
+      "order_reference": "\\b(ORD-\\d+-\\d+)\\b",
+      "container": "\\b(BOX-\\d+-\\d+)\\b"
+    }
   },
   "seed": {
     "anchor_date": "2026-10-28T12:00:00+00:00",
@@ -34,68 +82,430 @@
     "current_process_seconds": null,
     "note": "No measured current-process baseline yet. Must be observed with a stopwatch before any time-saved claim."
   },
-  "required_fields": ["description", "complaint_type", "root_cause", "channel"],
+  "required_fields": [
+    "description",
+    "complaint_type",
+    "root_cause",
+    "channel"
+  ],
   "field_mapping_file": "backend/field_mapping.json",
   "repeat_rule": {
     "enabled": true,
     "lookback_days": 60,
-    "match_keys": ["customer_id", "site_id"],
-    "cause_mode": "level2",
-    "eligible_statuses": ["open", "closed"],
+    "match_keys": [
+      "customer_id",
+      "site_id"
+    ],
+    "cause_mode": "level1",
+    "eligible_statuses": [
+      "open",
+      "closed"
+    ],
     "missing_values": "no_match",
     "version": "draft-juul-v1",
     "last_updated": "2026-10-28T00:00:00+00:00"
   },
   "defaults": {
-    "service": {"channel": "phone"},
-    "billing": {"channel": "email"},
-    "conduct": {"channel": "phone"}
+    "_all": {
+      "status": "open"
+    },
+    "service": {
+      "channel": "phone",
+      "priority": "normal",
+      "owner_team": "operations",
+      "response_target_days": "2"
+    },
+    "billing": {
+      "channel": "email",
+      "priority": "normal",
+      "owner_team": "customer_service",
+      "response_target_days": "5"
+    },
+    "conduct": {
+      "channel": "phone",
+      "priority": "normal",
+      "owner_team": "customer_service",
+      "response_target_days": "3"
+    }
+  },
+  "field_options": {
+    "channel": [
+      "phone",
+      "email",
+      "web",
+      "visit"
+    ],
+    "priority": [
+      "low",
+      "normal",
+      "high"
+    ],
+    "owner_team": [
+      "operations",
+      "customer_service",
+      "sales"
+    ]
+  },
+  "metrics": {
+    "tracked_fields": [
+      "customer_id",
+      "site_id",
+      "contract_id",
+      "order_id",
+      "container",
+      "channel",
+      "registration_date",
+      "registering_user",
+      "priority",
+      "status",
+      "owner_team",
+      "complaint_type",
+      "root_cause",
+      "description",
+      "summary"
+    ],
+    "prefill_origins": [
+      "prefilled",
+      "default"
+    ]
   },
   "types": [
-    {"id": "service", "en": "Collection service", "nl": "Inzamelservice", "description": "Problems with the collection service itself."},
-    {"id": "billing", "en": "Billing", "nl": "Facturatie", "description": "Invoice and charge disputes."},
-    {"id": "conduct", "en": "Conduct / other", "nl": "Gedrag / overig", "description": "Staff conduct and anything not fitting another type."}
+    {
+      "id": "service",
+      "en": "Collection service",
+      "nl": "Inzamelservice",
+      "description": "Problems with the collection service itself."
+    },
+    {
+      "id": "billing",
+      "en": "Billing",
+      "nl": "Facturatie",
+      "description": "Invoice and charge disputes."
+    },
+    {
+      "id": "conduct",
+      "en": "Conduct / other",
+      "nl": "Gedrag / overig",
+      "description": "Staff conduct and anything not fitting another type."
+    }
   ],
   "root_causes": [
-    {"id": "missed", "level1": "service", "level2": "missed_collection", "en": "Missed collection", "nl": "Niet ingezameld", "definition": "A planned collection did not take place.", "examples": "missed, not collected, niet geleegd, niet opgehaald"},
-    {"id": "late", "level1": "service", "level2": "late_collection", "en": "Late collection", "nl": "Te late inzameling", "definition": "Collection occurred after the expected time.", "examples": "late, delayed, te laat, vertraagd"},
-    {"id": "damage", "level1": "service", "level2": "container_damage", "en": "Container damage", "nl": "Containerschade", "definition": "Reported damage to a container.", "examples": "damaged, broken, kapot, beschadigd"},
-    {"id": "access", "level1": "service", "level2": "blocked_access", "en": "Blocked access", "nl": "Toegang geblokkeerd", "definition": "Crew could not reach the container or site.", "examples": "blocked, locked gate, geblokkeerd, afgesloten"},
-    {"id": "invoice", "level1": "billing", "level2": "incorrect_invoice", "en": "Incorrect invoice", "nl": "Onjuiste factuur", "definition": "A charge or invoice is disputed.", "examples": "invoice, charged, factuur, rekening"},
-    {"id": "conduct", "level1": "conduct", "level2": "staff_conduct", "en": "Staff conduct", "nl": "Gedrag medewerker", "definition": "Reported interaction with staff.", "examples": "rude, behaviour, onbeleefd, gedrag"},
-    {"id": "comms", "level1": "conduct", "level2": "poor_communication", "en": "Poor communication", "nl": "Slechte communicatie", "definition": "Customer was not informed or called back.", "examples": "no callback, not informed, geen terugbelverzoek, niet geïnformeerd"},
-    {"id": "other", "level1": "other", "level2": "other", "en": "Other", "nl": "Overig", "definition": "No existing category fits; explanation required.", "examples": ""}
+    {
+      "id": "missed",
+      "level1": "collection",
+      "level2": "missed_collection",
+      "en": "Missed collection",
+      "nl": "Niet ingezameld",
+      "definition": "A planned collection did not take place.",
+      "examples": "missed, not collected, niet geleegd, niet opgehaald",
+      "type": "service"
+    },
+    {
+      "id": "late",
+      "level1": "collection",
+      "level2": "late_collection",
+      "en": "Late collection",
+      "nl": "Te late inzameling",
+      "definition": "Collection occurred after the expected time.",
+      "examples": "late, delayed, te laat, vertraagd",
+      "type": "service"
+    },
+    {
+      "id": "damage",
+      "level1": "equipment",
+      "level2": "container_damage",
+      "en": "Container damage",
+      "nl": "Containerschade",
+      "definition": "Reported damage to a container.",
+      "examples": "damaged, broken, kapot, beschadigd",
+      "type": "service"
+    },
+    {
+      "id": "access",
+      "level1": "collection",
+      "level2": "blocked_access",
+      "en": "Blocked access",
+      "nl": "Toegang geblokkeerd",
+      "definition": "Crew could not reach the container or site.",
+      "examples": "blocked, locked gate, geblokkeerd, afgesloten",
+      "type": "service"
+    },
+    {
+      "id": "invoice",
+      "level1": "invoicing",
+      "level2": "incorrect_invoice",
+      "en": "Incorrect invoice",
+      "nl": "Onjuiste factuur",
+      "definition": "A charge or invoice is disputed.",
+      "examples": "invoice, charged, factuur, rekening",
+      "type": "billing"
+    },
+    {
+      "id": "conduct",
+      "level1": "crew_conduct",
+      "level2": "staff_conduct",
+      "en": "Staff conduct",
+      "nl": "Gedrag medewerker",
+      "definition": "Reported interaction with staff.",
+      "examples": "rude, behaviour, onbeleefd, gedrag",
+      "type": "conduct"
+    },
+    {
+      "id": "comms",
+      "level1": "communication",
+      "level2": "poor_communication",
+      "en": "Poor communication",
+      "nl": "Slechte communicatie",
+      "definition": "Customer was not informed or called back.",
+      "examples": "no callback, not informed, geen terugbelverzoek, niet geïnformeerd",
+      "type": "conduct"
+    },
+    {
+      "id": "spillage",
+      "level1": "spillage_damage",
+      "level2": "spillage_after_emptying",
+      "type": "service",
+      "en": "Spillage after emptying",
+      "nl": "Morsen na lediging",
+      "definition": "Waste was spilled or left behind during or after emptying.",
+      "examples": "spilled, spillage, left on the road, gemorst, afval op straat"
+    },
+    {
+      "id": "property_damage",
+      "level1": "spillage_damage",
+      "level2": "property_damage",
+      "type": "service",
+      "en": "Damage to property",
+      "nl": "Schade aan eigendom",
+      "definition": "The vehicle or crew damaged the customer's property.",
+      "examples": "damaged our gate, damage to our fence, scratched, schade aan ons hek, schade aan eigendom"
+    },
+    {
+      "id": "weighing",
+      "level1": "weighing",
+      "level2": "weighing_dispute",
+      "type": "billing",
+      "en": "Weighing dispute",
+      "nl": "Weegdiscussie",
+      "definition": "The weight on the ticket is disputed.",
+      "examples": "weight, weighing, weighbridge, gewicht, weegbon"
+    },
+    {
+      "id": "other",
+      "level1": "other",
+      "level2": "other",
+      "en": "Other",
+      "nl": "Overig",
+      "definition": "No existing category fits; explanation required.",
+      "examples": "",
+      "type": null
+    }
   ],
   "roles": {
-    "employee": ["register", "read"],
-    "lead": ["read", "analytics"],
-    "admin": ["register", "read", "analytics", "configure", "evaluate", "audit"],
-    "evaluator": ["read", "analytics", "evaluate"],
-    "governance": ["read", "audit"],
-    "viewer": ["read"]
+    "employee": [
+      "register",
+      "read"
+    ],
+    "lead": [
+      "read",
+      "analytics"
+    ],
+    "admin": [
+      "register",
+      "read",
+      "analytics",
+      "configure",
+      "evaluate",
+      "audit"
+    ],
+    "evaluator": [
+      "read",
+      "analytics",
+      "evaluate"
+    ],
+    "governance": [
+      "read",
+      "audit"
+    ],
+    "viewer": [
+      "read"
+    ]
   },
   "demo_users": [
-    {"id": "demo.emp.a1", "name": "Demo Employee A1", "role": "employee", "group": "group_a"},
-    {"id": "demo.emp.a2", "name": "Demo Employee A2", "role": "employee", "group": "group_a"},
-    {"id": "demo.emp.b1", "name": "Demo Employee B1", "role": "employee", "group": "group_b"},
-    {"id": "demo.emp.b2", "name": "Demo Employee B2", "role": "employee", "group": "group_b"},
-    {"id": "demo.emp.c1", "name": "Demo Employee C1", "role": "employee", "group": "group_c"},
-    {"id": "demo.lead", "name": "Demo Team Lead", "role": "lead", "group": "leads"},
-    {"id": "demo.admin", "name": "Demo System Administrator", "role": "admin", "group": "admins"},
-    {"id": "demo.evaluator", "name": "Demo Model Evaluator", "role": "evaluator", "group": "evaluators"},
-    {"id": "demo.governance", "name": "Demo Privacy/Governance Reviewer", "role": "governance", "group": "governance"},
-    {"id": "demo.viewer", "name": "Demo Viewer", "role": "viewer", "group": "viewers"}
+    {
+      "id": "demo.emp.a1",
+      "name": "Demo Employee A1",
+      "role": "employee",
+      "group": "group_a"
+    },
+    {
+      "id": "demo.emp.a2",
+      "name": "Demo Employee A2",
+      "role": "employee",
+      "group": "group_a"
+    },
+    {
+      "id": "demo.emp.b1",
+      "name": "Demo Employee B1",
+      "role": "employee",
+      "group": "group_b"
+    },
+    {
+      "id": "demo.emp.b2",
+      "name": "Demo Employee B2",
+      "role": "employee",
+      "group": "group_b"
+    },
+    {
+      "id": "demo.emp.c1",
+      "name": "Demo Employee C1",
+      "role": "employee",
+      "group": "group_c"
+    },
+    {
+      "id": "demo.lead",
+      "name": "Demo Team Lead",
+      "role": "lead",
+      "group": "leads"
+    },
+    {
+      "id": "demo.admin",
+      "name": "Demo System Administrator",
+      "role": "admin",
+      "group": "admins"
+    },
+    {
+      "id": "demo.evaluator",
+      "name": "Demo Model Evaluator",
+      "role": "evaluator",
+      "group": "evaluators"
+    },
+    {
+      "id": "demo.governance",
+      "name": "Demo Privacy/Governance Reviewer",
+      "role": "governance",
+      "group": "governance"
+    },
+    {
+      "id": "demo.viewer",
+      "name": "Demo Viewer",
+      "role": "viewer",
+      "group": "viewers"
+    }
   ],
   "provisional_meta": {
-    "repeat_rule.lookback_days": {"description": "Days to look back for earlier complaints (boundary inclusive).", "provisional": true, "owner_to_confirm": "Juul (Renewi)", "updated": "2026-10-28"},
-    "repeat_rule.match_keys": {"description": "Fields that must match for a potential repeat.", "provisional": true, "owner_to_confirm": "Juul (Renewi)", "updated": "2026-10-28"},
-    "repeat_rule.cause_mode": {"description": "level1 or level2 root-cause match.", "provisional": true, "owner_to_confirm": "Juul (Renewi)", "updated": "2026-10-28"},
-    "repeat_rule.eligible_statuses": {"description": "Previous complaint statuses considered.", "provisional": true, "owner_to_confirm": "Juul (Renewi)", "updated": "2026-10-28"},
-    "repeat_rule.missing_values": {"description": "Handling when a match key is missing (no_match).", "provisional": true, "owner_to_confirm": "Juul (Renewi)", "updated": "2026-10-28"},
-    "taxonomy": {"description": "Provisional synthetic taxonomy, not the official Renewi list.", "provisional": true, "owner_to_confirm": "Glenn / process owners", "updated": "2026-10-28"},
-    "defaults": {"description": "Channel defaults per complaint type; illustrative only.", "provisional": true, "owner_to_confirm": "Complaint-system owner", "updated": "2026-10-28"},
-    "classification.min_confidence": {"description": "Below this confidence no cause is preselected. Not a calibrated probability.", "provisional": true, "owner_to_confirm": "DigitalT3 / process owners", "updated": "2026-10-28"},
-    "required_fields": {"description": "Mandatory registration fields.", "provisional": true, "owner_to_confirm": "Complaint-system owner", "updated": "2026-10-28"},
-    "baseline.current_process_seconds": {"description": "Observed current-process duration; unset until measured.", "provisional": true, "owner_to_confirm": "Glenn", "updated": "2026-10-28"}
+    "repeat_rule.lookback_days": {
+      "description": "Days to look back for earlier complaints (boundary inclusive).",
+      "provisional": true,
+      "owner_to_confirm": "Juul (Renewi)",
+      "updated": "2026-10-28"
+    },
+    "repeat_rule.match_keys": {
+      "description": "Fields that must match for a potential repeat.",
+      "provisional": true,
+      "owner_to_confirm": "Juul (Renewi)",
+      "updated": "2026-10-28"
+    },
+    "repeat_rule.cause_mode": {
+      "description": "level1 or level2 root-cause match.",
+      "provisional": true,
+      "owner_to_confirm": "Juul (Renewi)",
+      "updated": "2026-10-28"
+    },
+    "repeat_rule.eligible_statuses": {
+      "description": "Previous complaint statuses considered.",
+      "provisional": true,
+      "owner_to_confirm": "Juul (Renewi)",
+      "updated": "2026-10-28"
+    },
+    "repeat_rule.missing_values": {
+      "description": "Handling when a match key is missing (no_match).",
+      "provisional": true,
+      "owner_to_confirm": "Juul (Renewi)",
+      "updated": "2026-10-28"
+    },
+    "taxonomy": {
+      "description": "Provisional synthetic taxonomy, not the official Renewi list.",
+      "provisional": true,
+      "owner_to_confirm": "Glenn / process owners",
+      "updated": "2026-10-28"
+    },
+    "defaults": {
+      "description": "Channel, priority, owner team and response target per complaint type; illustrative only.",
+      "provisional": true,
+      "owner_to_confirm": "Complaint-system owner",
+      "updated": "2026-10-28"
+    },
+    "classification.min_confidence": {
+      "description": "Below this confidence no cause is preselected. Not a calibrated probability.",
+      "provisional": true,
+      "owner_to_confirm": "DigitalT3 / process owners",
+      "updated": "2026-10-28"
+    },
+    "required_fields": {
+      "description": "Mandatory registration fields.",
+      "provisional": true,
+      "owner_to_confirm": "Complaint-system owner",
+      "updated": "2026-10-28"
+    },
+    "baseline.current_process_seconds": {
+      "description": "Observed current-process duration; unset until measured.",
+      "provisional": true,
+      "owner_to_confirm": "Glenn",
+      "updated": "2026-10-28"
+    }
+  },
+  "root_cause_categories": [
+    {
+      "id": "collection",
+      "en": "Missed or late collection",
+      "nl": "Gemiste of late ophaling"
+    },
+    {
+      "id": "equipment",
+      "en": "Container and equipment",
+      "nl": "Container en materieel"
+    },
+    {
+      "id": "spillage_damage",
+      "en": "Spillage and property damage",
+      "nl": "Morsen en schade aan eigendom"
+    },
+    {
+      "id": "invoicing",
+      "en": "Invoicing and contract",
+      "nl": "Facturatie en contract"
+    },
+    {
+      "id": "weighing",
+      "en": "Weighing and waste acceptance",
+      "nl": "Weging en afvalaanname"
+    },
+    {
+      "id": "crew_conduct",
+      "en": "Driver and crew conduct",
+      "nl": "Gedrag chauffeur en bemanning"
+    },
+    {
+      "id": "communication",
+      "en": "Communication and planning",
+      "nl": "Communicatie en planning"
+    },
+    {
+      "id": "other",
+      "en": "Other",
+      "nl": "Overig"
+    }
+  ],
+  "targets": {
+    "registration_seconds": 90,
+    "faster_than_baseline": 0.5,
+    "other_share_max": 0.1,
+    "top3_acceptance_min": 0.7,
+    "prefill_rate_min": 0.7,
+    "cause_accuracy_min": 0.85,
+    "summary_usable_min": 0.8,
+    "would_use_daily_min": 5,
+    "small_sample_below": 10
   }
 }

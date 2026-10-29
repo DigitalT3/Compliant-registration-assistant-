@@ -4,7 +4,9 @@ This repository contains a standalone, desktop-first complaint-registration demo
 
 ## Implemented scope
 
-The React/Vite frontend provides a Dutch and English six-step workflow for customer lookup, detail review, complaint description, summary, classification, repeat checking, and PoC-only save. The FastAPI backend provides synthetic lookup and context, configurable defaults with provenance, deterministic repeat detection, complaint persistence, session events, audit events, dashboard metrics, demo roles, and OpenAPI documentation.
+The React/Vite frontend provides a Dutch and English six-step workflow: customer lookup (customer number, order, container, name or postcode, or a pasted email), detail review, complaint description, one AI analysis call (summary, type and top-three causes), repeat checking with confirm/dispute, and PoC-only save. The FastAPI backend provides synthetic lookup and context, configurable per-type defaults with provenance, a two-level root-cause taxonomy, deterministic repeat detection, complaint persistence, session events, audit events, demo roles, and OpenAPI documentation.
+
+For the user test it also records test sessions (participant, scenario, assistant or plain-form mode), baseline stopwatch timings, exit interviews and blind expert labelling, and the dashboard evaluates each PRD target with its sample size and exports CSV.
 
 AI behaviour is mock by default. The mock provider is explicitly labelled in the UI and API; it is deterministic and intended for offline demonstration, not as evidence of live-model quality.
 
@@ -14,7 +16,13 @@ Use Python 3.12 or a compatible Python 3 release, plus Node.js 18 or later with 
 
 ## Setup and run
 
-From the project root, create a local environment and install backend dependencies.
+One command (creates the venv, installs dependencies, resets the synthetic data, starts both servers; use `API_PORT` / `WEB_PORT` if 8000 or 5173 is taken):
+
+```bash
+scripts/run_demo.sh
+```
+
+Or step by step. From the project root, create a local environment and install backend dependencies.
 
 ```bash
 python -m venv .venv
@@ -41,7 +49,7 @@ Open `http://127.0.0.1:5173`. The API health response is at `http://127.0.0.1:80
 
 ## Configuration
 
-`config.json` is the central source for the provisional taxonomy, complaint-type channel defaults, required fields, synthetic users, fixed clock, and repeat rule. The active default repeat rule matches the same customer and site, uses level-two root-cause matching, considers `open` and `closed` historical complaints, and uses an inclusive 60-day lookback. These values are provisional and require Renewi confirmation.
+`config.json` is the central source for the provisional taxonomy, complaint-type channel defaults, required fields, synthetic users, fixed clock, and repeat rule. The active default repeat rule matches the same customer and site, matches at root-cause category level (level one; switchable to level two in Configuration), considers `open` and `closed` historical complaints, and uses an inclusive 60-day lookback. These values are provisional and require Renewi confirmation.
 
 Copy `.env.example` to `.env` for local settings. `AI_PROVIDER=mock` is the safe default. Live OpenAI-compatible mode requires an approved endpoint and credentials through `AI_BASE_URL`, `AI_MODEL`, and `AI_API_KEY`; it was not verified because no credentials were supplied.
 
@@ -53,14 +61,14 @@ Run backend tests from the project root.
 python -m pytest -q
 ```
 
-Run the frontend build and browser journey from `frontend/`.
+Run the frontend build and the browser scripted cases from `frontend/`. The browser tests use the Google Chrome installed on the machine and start their own backend (port 8010) and frontend (port 5183) on a fresh synthetic database, so they do not touch a running demo.
 
 ```bash
 npm run build
 npm run test:e2e
 ```
 
-The recorded results are 24 Python tests passed in 15.17 seconds, one Chromium Playwright journey passed in 5.1 seconds, and the production frontend build passed in 1.26 seconds. These are separate runs, not a single combined execution. See `docs/TEST_RESULTS.md` for qualifications.
+Latest recorded run: 61 Python tests passed, 14 Chromium scripted cases passed (T01-T10 plus email, plain-form, dashboard and Dutch UI), TypeScript check and production build passed. These are separate runs. See `docs/TEST_RESULTS.md` for qualifications.
 
 ## Limitations
 

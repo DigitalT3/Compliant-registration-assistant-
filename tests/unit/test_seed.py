@@ -15,13 +15,13 @@ def test_reset_is_deterministic(fresh_db):
     first = seed.fingerprint()
     seed.reset()
     assert seed.fingerprint() == first
-    assert first["user_version"] == 2
+    assert first["user_version"] == 5
 
 
 def test_dataset_minimums(fresh_db):
     c = seed.fingerprint()["counts"]
     assert c["customers"] >= 20
-    assert c["complaints"] >= 15
+    assert c["complaints"] >= 40
     assert len(seed.load_scenarios()) >= 10
     with db.connect() as conn:
         assert conn.execute("SELECT count(*) FROM complaints WHERE is_seed=1").fetchone()[0] == c["complaints"]

@@ -54,6 +54,40 @@ def _validate(conn, p: dict, cfg: dict) -> None:
             raise ApiError(422, "invalid_reference", f"{field} does not belong to the customer.")
 
 
+def _form_fields(conn, p: dict, cfg: dict) -> dict:
+    """Resolve the defaulted form fields server-side: explicit value, else the type default.
+
+    The container is always read from the selected order, never taken from the client.
+    """
+    defaults = {**cfg["defaults"].get("_all", {}), **cfg["defaults"].get(p["complaint_type"], {})}
+    options = cfg.get("field_options", {})
+    out = {}
+    for name in ("priority", "owner_team"):
+        value = (p.get(name) or defaults.get(name) or "").strip()
+        if value and name in options and value not in options[name]:
+            raise ApiError(422, "invalid_" + name, f"{name} must be one of {options[name]}.")
+        out[name] = value or None
+    days = defaults.get("response_target_days")
+    out["response_target_days"] = int(days) if days not in (None, "") else None
+    out["status"] = defaults.get("status", "open")
+    order = p.get("order_id") and conn.execute("SELECT container FROM orders WHERE id=?", (p["order_id"],)).fetchone()
+    out["container"] = order["container"] if order else None
+    return out
+
+
+def _record_final_provenance(conn, session, p: dict, cfg: dict) -> None:
+    """Store the origin of each tracked field as it was saved (basis of the prefill rate, FR-15)."""
+    if not session or not p.get("field_provenance"):
+        return
+    tracked = cfg["metrics"]["tracked_fields"]
+    for name in tracked:
+        origin = p["field_provenance"].get(name, "blank")
+        if origin not in sessions_svc.ORIGINS:
+            origin = "blank"
+        conn.execute("INSERT INTO field_events(session_id,field,origin,event_type,changed,at) VALUES(?,?,?,?,0,?)",
+                     (session["id"], name, origin, "final", db.now()))
+
+
 def _next_id(conn) -> str:
     n = conn.execute("SELECT coalesce(max(CAST(substr(id,5) AS INTEGER)),0) FROM complaints "
                      "WHERE id GLOB 'POC-[0-9]*'").fetchone()[0]
@@ -70,6 +104,7 @@ def create(conn, p: dict, user: dict) -> dict:
         cur = repeat_svc.input_hash(cfg["repeat_rule"], p)
         if cur != p["repeat_input_hash"]:
             raise ApiError(409, "stale_repeat_check", "Repeat check is out of date; run it again.")
+    extra = _form_fields(conn, p, cfg)   # validates priority/owner_team before any write
     try:
         conn.execute("BEGIN IMMEDIATE")
         cid, stamp = _next_id(conn), db.reference_now().isoformat()
@@ -77,16 +112,23 @@ def create(conn, p: dict, user: dict) -> dict:
                                             db.reference_now(), causes_by_id(cfg))
         payload = {"description": p["description"], "synthetic": True, "complaint_type": p["complaint_type"],
                    "other_reason": p.get("other_reason") or ""}
-        conn.execute(
-            "INSERT INTO complaints(id,customer_id,site_id,contract_id,order_id,root_cause,created,status,"
-            "session_id,payload,channel,registration_date,registering_user,original_text,language,summary_json,"
-            "summary_meta,complaint_type,other_reason,rule_version,taxonomy_version,repeat_detected,scenario,"
-            "is_poc,is_seed) VALUES(?,?,?,?,?,?,?,'open',?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,0)",
-            (cid, p["customer_id"], p.get("site_id"), p.get("contract_id"), p.get("order_id"), p["root_cause"],
-             stamp, p.get("session_id"), json.dumps(payload), p["channel"], stamp, user["id"], p["description"],
-             p.get("language"), json.dumps(p.get("summary")), json.dumps(p.get("summary_meta")),
-             p["complaint_type"], (p.get("other_reason") or "").strip() or None, cfg["repeat_rule"]["version"],
-             cfg["taxonomy_version"], int(result["is_repeat"]), p.get("scenario") or (session or {}).get("scenario")))
+        row = {
+            "id": cid, "customer_id": p["customer_id"], "site_id": p.get("site_id"),
+            "contract_id": p.get("contract_id"), "order_id": p.get("order_id"), "root_cause": p["root_cause"],
+            "created": stamp, "status": extra["status"], "session_id": p.get("session_id"),
+            "payload": json.dumps(payload), "channel": p["channel"], "registration_date": stamp,
+            "registering_user": user["id"], "original_text": p["description"], "language": p.get("language"),
+            "summary_json": json.dumps(p.get("summary")), "summary_meta": json.dumps(p.get("summary_meta")),
+            "complaint_type": p["complaint_type"], "other_reason": (p.get("other_reason") or "").strip() or None,
+            "rule_version": cfg["repeat_rule"]["version"], "taxonomy_version": cfg["taxonomy_version"],
+            "repeat_detected": int(result["is_repeat"]),
+            "scenario": p.get("scenario") or (session or {}).get("scenario"), "is_poc": 1, "is_seed": 0,
+            "priority": extra["priority"], "owner_team": extra["owner_team"],
+            "response_target_days": extra["response_target_days"], "container": extra["container"],
+            "root_cause_category": causes_by_id(cfg)[p["root_cause"]]["level1"],
+        }
+        conn.execute(f"INSERT INTO complaints({','.join(row)}) VALUES({','.join('?' * len(row))})", list(row.values()))
+        _record_final_provenance(conn, session, p, cfg)
         _insert_repeat_check(conn, p.get("session_id"), cid, result)
         if session:
             _record_outcome(conn, session["id"], p)
@@ -108,7 +150,7 @@ def create(conn, p: dict, user: dict) -> dict:
 
 def _record_outcome(conn, session_id: str, p: dict) -> None:
     """Log suggestion outcome from the SERVER-recorded classify event (not client claims)."""
-    row = conn.execute("SELECT candidates FROM ai_events WHERE session_id=? AND operation='classify' "
+    row = conn.execute("SELECT candidates FROM ai_events WHERE session_id=? AND operation IN ('classify','analyze') "
                        "AND status='ok' ORDER BY id DESC LIMIT 1", (session_id,)).fetchone()
     shown = [c["root_cause_id"] for c in json.loads(row["candidates"] or "[]")] if row else []
     conn.execute("INSERT INTO ai_events(session_id,operation,candidates,selected,in_top3,status,at) "
