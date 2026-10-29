@@ -51,7 +51,7 @@ def test_pending_account_cannot_sign_in_until_approved(client):
     assert approve(client, uid).status_code == 200
     ok = login(client).json()
     assert ok["user"]["role"] == "employee" and ok["user"]["function"] == "sales"
-    assert set(ok["user"]["permissions"]) == {"register", "read"} and "password_hash" not in str(ok)
+    assert set(ok["user"]["permissions"]) == {"register", "read", "customer_data"} and "password_hash" not in str(ok)
 
 
 def test_wrong_password_is_generic_and_does_not_reveal_accounts(client):

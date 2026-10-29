@@ -136,3 +136,34 @@ table.users select { width: auto; }
 .status-disabled { color: #8c1d18; background: #ffe9e7; }
 
 .card.found { border-color: #176d52; box-shadow: 0 0 0 2px #cfe9dc; }
+
+/* Customer data tabs and tables */
+.tabs { display: flex; gap: .4rem; margin-bottom: .75rem; flex-wrap: wrap; }
+.tabs button { background: #fff; color: #176d52; }
+.tabs button.active { background: #176d52; color: #fff; }
+table.data-table { width: 100%; border-collapse: collapse; }
+table.data-table th, table.data-table td { text-align: left; padding: .5rem .6rem; border-bottom: 1px solid #e1e9e5; vertical-align: middle; }
+table.data-table th { font-size: .85rem; color: #52645c; font-weight: 600; }
+table.data-table tr.selected { background: #e4f4ea; }
+button.link { background: none; border: 0; color: #176d52; text-decoration: underline; padding: 0; }
+button.link:hover:not(:disabled) { background: none; }
+
+/* Customer data page: left pane + main pane */
+.split { display: grid; grid-template-columns: 240px 1fr; gap: 1rem; align-items: start; }
+.leftpane { display: flex; flex-direction: column; gap: .4rem; }
+.leftpane button { text-align: left; background: #fff; color: #176d52; display: flex; justify-content: space-between; align-items: center; }
+.leftpane button.active { background: #176d52; color: #fff; }
+.leftpane button.link { background: none; color: #176d52; padding: .2rem 0; display: inline; }
+.leftpane .count { background: #e4f4ea; color: #075d3a; border-radius: 999px; padding: 0 .5rem; font-size: .8rem; }
+.leftpane button.active .count { background: #fff; }
+.mainpane form label { display: block; margin: .5rem 0 .15rem; font-weight: 600; }
+@media (max-width: 800px) { .split { grid-template-columns: 1fr; } }
+
+/* Sidebar group for customer data, and the customer bar on those pages */
+.nav-group { margin: 1rem 0 .25rem; padding: 0 .9rem; font-size: .72rem; letter-spacing: .06em; text-transform: uppercase; color: #9fc7b5; }
+.sidebar button.nav-sub { padding-left: 1.6rem; }
+.customer-bar { display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; }
+.count { background: #e4f4ea; color: #075d3a; border-radius: 999px; padding: 0 .5rem; font-size: .8rem; font-weight: 600; }
+
+.pager { margin-top: .75rem; justify-content: flex-end; }
+.customer-bar label { margin: 0; }

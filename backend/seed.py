@@ -121,6 +121,8 @@ def _seed_customers(conn, anchor, stamp: str) -> None:
             conn.execute("INSERT INTO sites(id,customer_id,name,reference,postcode,active) "
                          "VALUES(?,?,?,?,?,1)",
                          (site, c, f"Synthetic depot {s}", f"SITE-{n:03}-{s}", postcode))
+            conn.execute("INSERT INTO containers(id,customer_id,site_id,number,source) VALUES(?,?,?,?,'seed')",
+                         (f"BOX-{n:03}-{s}", c, site, f"BOX-{n:03}-{s}"))
             expired = n == MISSING_DATA_CUSTOMER
             conn.execute(
                 "INSERT INTO contracts(id,customer_id,site_id,status,reference,valid_from,valid_to) "

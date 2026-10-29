@@ -59,6 +59,15 @@ Employees create an account on the sign-in screen with their name, work e-mail, 
 - **Demo accounts** (the ten fictional users, no password) are **off by default**. Set `POC_DEMO_MODE=1` only for a local demo; never in a shared deployment. The sign-in screen shows "Demo access" only while it is on.
 - This is the PoC's own sign-in, not Renewi single sign-on. It is built so that the token check and login can be replaced by the client's identity provider (e.g. Microsoft Entra ID via OpenID Connect) without changing the screens or permissions. Password reset is done by an administrator (temporary password); there is no self-service e-mail reset yet because the PoC sends no e-mail.
 
+## Customer data (customers, sites, contracts, orders, containers)
+
+Customers, sites, contracts, orders and containers are synthetic and stand in for Renewi's own systems. For employees and admins the left menu has a **Customer data** group with five pages: **Customers, Sites, Contracts, Orders, Containers**.
+
+- **Customers** lists every customer with how many sites, contracts, orders and containers each has (searchable, paged) and has **Add a customer**: the next customer number is assigned automatically and an optional first site makes the customer usable in the registration at once. **Open** jumps to that customer's sites.
+- **Sites / Contracts / Orders / Containers** each list the rows of **all customers** with a customer column, a customer filter, a search box and paging, and have an **Add** form (in the all-customers view the form asks for the customer first). New rows appear in the registration dropdowns straight away; the half-filled complaint is kept, and **Review details** has a link here plus Sites/Contracts/Orders tables whose **Use** button fills the form.
+- Everything added is marked **Added in the PoC** (with who and when) and audited. A contract, container or order must belong to the same site, container numbers are unique, and an order needs an existing container (add it first). Customers may share a name.
+- In the real landscape this data would come from Renewi's systems and the PoC must never write to them; these pages only extend the PoC's own synthetic database. Containers are records of their own (migration 8).
+
 ## Supabase (Postgres)
 
 By default the PoC uses the local SQLite file. To use a hosted Supabase database instead, put these in `.env` (never commit it): `POC_DB=postgres` and `DATABASE_URL=<Session pooler connection string, password URL-encoded>`. Choose an EU region. Restart the app; the schema is created and versioned automatically and the synthetic data is seeded only if the database is empty. `RESET=1 scripts/run_demo.sh` wipes and reseeds it.

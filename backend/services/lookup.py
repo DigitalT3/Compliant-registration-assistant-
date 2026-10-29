@@ -35,7 +35,7 @@ def search(conn, q: str) -> dict:
     q = (q or "").strip()
     if not q:
         raise ApiError(400, "empty_query", "Enter a customer number, order, container or name.")
-    cands, mtype = [], "none"
+    cands, mtype, orders = [], "none", []
 
     rows = conn.execute("SELECT * FROM customers WHERE number=?", (q,)).fetchall()
     if rows:
@@ -50,7 +50,14 @@ def search(conn, q: str) -> dict:
                               (q,)).fetchall()
         if orders:
             mtype = "container"
-    if mtype in ("order", "container"):
+    if not cands and mtype == "none":      # a container added in the PoC may not have any order yet
+        box = conn.execute("SELECT * FROM containers WHERE lower(number)=lower(?)", (q,)).fetchone()
+        if box:
+            cust = conn.execute("SELECT * FROM customers WHERE id=?", (box["customer_id"],)).fetchone()
+            card = _card(conn, cust, box["site_id"])
+            card["matched_container"] = box["number"]
+            cands, mtype = [card], "container"
+    if mtype in ("order", "container") and orders:
         seen = {}
         for o in orders:
             seen.setdefault(o["customer_id"], o)
@@ -85,7 +92,7 @@ def search(conn, q: str) -> dict:
 
 
 # PUBLIC_INTERFACE
-def context(conn, customer_id: str, site_id: str | None = None) -> dict:
+def context(conn, customer_id: str, site_id: str | None = None, everything: bool = False) -> dict:
     """Return customer, sites, contracts and the last 10 orders (optionally per site)."""
     cust = conn.execute("SELECT * FROM customers WHERE id=?", (customer_id,)).fetchone()
     if not cust:
@@ -99,5 +106,6 @@ def context(conn, customer_id: str, site_id: str | None = None) -> dict:
     sql, args = "SELECT * FROM orders WHERE customer_id=?", [customer_id]
     if site_id:
         sql, args = sql + " AND site_id=?", args + [site_id]
-    orders = [dict(r) for r in conn.execute(sql + " ORDER BY date DESC LIMIT 10", args)]
-    return {"customer": dict(cust), "sites": sites, "contracts": contracts, "orders": orders}
+    orders = [dict(r) for r in conn.execute(sql + f" ORDER BY date DESC LIMIT {200 if everything else 10}", args)]
+    containers = [dict(r) for r in conn.execute("SELECT * FROM containers WHERE customer_id=? ORDER BY number", (customer_id,))]
+    return {"customer": dict(cust), "sites": sites, "contracts": contracts, "orders": orders, "containers": containers}

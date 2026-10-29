@@ -42,7 +42,7 @@ test("T01 customer number, English text, suggested cause preselected, saved", as
   await expect(page.getByText(/100009/).first()).toBeVisible();
   await selectFirst(page);
   await page.getByLabel("Site", { exact: true }).selectOption("C009-S1");
-  await expect(page.getByText("Container", { exact: true })).toBeVisible();
+  await expect(page.locator(".row", { hasText: "Container" })).toBeVisible();
   await describe(page, "The container at our depot was not emptied on Tuesday, it was missed again.", "en");
   await expect(page.getByRole("heading", { name: /Summary/ })).toBeVisible();
   await expect(page.getByRole("radio", { name: /Missed collection/ }).first()).toBeChecked();   // confirm, don't type
@@ -61,7 +61,7 @@ test("T02 order number prefills site, order and container", async ({ page }) => 
   await selectFirst(page);
   await expect(page.getByLabel("Site", { exact: true })).toHaveValue("C002-S1");
   await expect(page.getByLabel("Order", { exact: true })).toHaveValue("C002-O10");
-  await expect(page.getByText("BOX-002-1", { exact: true })).toBeVisible();
+  await expect(page.locator(".row", { hasText: "Container" }).getByText("BOX-002-1", { exact: true })).toBeVisible();
 });
 
 test("T03 container number finds the customer and site", async ({ page }) => {
@@ -393,4 +393,167 @@ test("T31 a real administrator (own password, no demo account) approves people a
   await page.getByLabel("Password", { exact: true }).fill("lotte-long-pw-1");
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
   await expect(page.getByText("Sales · employee")).toBeVisible();
+});
+
+test("T32 customer data is three tabbed tables; a row's Use button fills the form", async ({ page }) => {
+  await openApp(page);
+  await search(page, "100009");
+  await selectFirst(page);
+  const data = page.getByRole("region", { name: "Customer context" });
+  await expect(data.getByRole("tab", { name: "Sites (2)" })).toBeVisible();
+  await expect(data.getByRole("tab", { name: "Contracts (2)" })).toBeVisible();
+  await expect(data.getByRole("tab", { name: /orders \(\d+\)/i })).toBeVisible();
+
+  await data.getByRole("tab", { name: /Sites/ }).click();
+  await expect(data.getByText("Postcode", { exact: true })).toBeVisible();
+  await data.getByRole("row", { name: /Synthetic depot 2/ }).getByRole("button", { name: "Use" }).click();
+  await expect(page.getByLabel("Site", { exact: true })).toHaveValue("C009-S2");
+  await expect(data.getByRole("row", { name: /Synthetic depot 2/ }).getByText("Selected")).toBeVisible();
+
+  await data.getByRole("tab", { name: /orders/i }).click();
+  await expect(data.getByText("Showing Synthetic depot 2 only.")).toBeVisible();          // orders follow the chosen site
+  const rows = data.getByRole("row").filter({ hasText: "BOX-009-2" });
+  await expect(rows.first()).toBeVisible();
+  await expect(data.getByRole("row").filter({ hasText: "BOX-009-1" })).toHaveCount(0);
+  await rows.nth(1).getByRole("button", { name: "Use" }).click();
+  await expect(page.locator(".row", { hasText: "Container" }).getByText("BOX-009-2")).toBeVisible();
+  await data.getByRole("button", { name: "Show all sites" }).click();
+  await expect(data.getByRole("row").filter({ hasText: "BOX-009-1" }).first()).toBeVisible();
+
+  await data.getByRole("tab", { name: /contracts/i }).click();
+  await expect(data.getByText("CON-009-1").first()).toBeVisible();
+  await expect(data.getByRole("row", { name: /CON-009-2/ }).getByText("Selected")).toBeVisible();   // prefilled by choosing the site
+  await data.getByRole("row", { name: /CON-009-1/ }).getByRole("button", { name: "Use" }).click();
+  await expect(page.getByLabel("Contract", { exact: true })).toHaveValue("C009-K1");
+  await expect(page.getByLabel("Site", { exact: true })).toHaveValue("C009-S1");              // the contract's site came with it
+});
+
+test("T33 an employee adds a site, container, contract and order; they appear in the registration dropdowns", async ({ page }) => {
+  await openApp(page);
+  await search(page, "100009");
+  await selectFirst(page);
+  await expect(page.locator(".row", { hasText: "Registered by" })).toContainText("Demo Employee A1");   // a name, not an id
+  await page.getByRole("button", { name: /Add or manage this customer's sites/ }).click();
+
+  const left = page.getByRole("navigation", { name: "Main navigation" });
+  await expect(page.getByRole("heading", { name: "Sites", exact: true })).toBeVisible();          // Sites is a menu item of its own
+  await expect(page.getByText("1–2 of 2")).toBeVisible();                                           // the customer carried over (2 sites)
+
+  await page.getByRole("button", { name: "Add a site" }).click();
+  const site = page.getByRole("form", { name: "Add a site" });
+  await site.getByLabel("Name").fill("Synthetic depot 3");
+  await site.getByLabel("Postcode").fill("1009 ZZ");
+  await site.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByText("Added. It now appears in the registration dropdowns.")).toBeVisible();
+  await expect(page.getByRole("row", { name: /Synthetic depot 3/ }).getByText("Added in the PoC")).toBeVisible();
+  await expect(page.getByText("1–3 of 3")).toBeVisible();
+
+  await left.getByRole("button", { name: "Containers", exact: true }).click();
+  await page.getByRole("button", { name: "Add a container" }).click();
+  const box = page.getByRole("form", { name: "Add a container" });
+  await box.getByLabel("Site").selectOption({ label: "Synthetic depot 3 (SITE-009-3)" });
+  await box.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByRole("row", { name: /BOX-009-3/ }).getByText("Added in the PoC")).toBeVisible();   // number generated
+
+  await left.getByRole("button", { name: "Contracts", exact: true }).click();
+  await page.getByRole("button", { name: "Add a contract" }).click();
+  const contract = page.getByRole("form", { name: "Add a contract" });
+  await contract.getByLabel("Site").selectOption({ label: "Synthetic depot 3 (SITE-009-3)" });
+  await contract.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByRole("row", { name: /CON-009-3/ })).toBeVisible();
+
+  await left.getByRole("button", { name: "Orders", exact: true }).click();
+  await page.getByRole("button", { name: "Add an order" }).click();
+  const order = page.getByRole("form", { name: "Add an order" });
+  await order.getByLabel("Site").selectOption({ label: "Synthetic depot 3 (SITE-009-3)" });
+  await order.getByLabel("Container").selectOption("BOX-009-3");
+  await order.getByLabel("Contract").selectOption({ label: "CON-009-3" });
+  await order.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByRole("row", { name: /ORD-009-P1/ }).getByText("Added in the PoC")).toBeVisible();
+
+  await page.getByRole("button", { name: "Back to the complaint" }).click();                       // registration is where it was
+  await expect(page.getByText("Customer context")).toBeVisible();
+  const siteSelect = page.getByLabel("Site", { exact: true });
+  await expect(siteSelect.locator("option", { hasText: "Synthetic depot 3" })).toHaveCount(1);       // new site is in the dropdown
+  await siteSelect.selectOption("C009-S3");
+  await expect(page.getByLabel("Contract", { exact: true })).toHaveValue("C009-K3");               // and its contract, order, container
+  await expect(page.getByLabel("Order", { exact: true })).toHaveValue("C009-OP1");
+  await expect(page.locator(".row", { hasText: "Container" }).getByText("BOX-009-3")).toBeVisible();
+});
+
+test("T34 roles without the permission do not see Customer data", async ({ page }) => {
+  const menu = page.getByRole("navigation", { name: "Main navigation" });
+  await openApp(page, "demo.lead");
+  await expect(menu.getByRole("button", { name: "Sites", exact: true })).toHaveCount(0);
+  await expect(menu.getByText("Customer data")).toHaveCount(0);
+  await openApp(page, "demo.emp.a1");
+  await expect(menu.getByText("Customer data")).toBeVisible();                                        // the group heading
+  for (const item of ["Customers", "Sites", "Contracts", "Orders", "Containers"]) await expect(menu.getByRole("button", { name: item, exact: true })).toBeVisible();
+});
+
+test("T35 Customers page lists every customer; an employee adds a customer and registers for it", async ({ page }) => {
+  await openApp(page);
+  const menu = page.getByRole("navigation", { name: "Main navigation" });
+  await menu.getByRole("button", { name: "Customers", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Customers", exact: true })).toBeVisible();
+  await expect(page.getByText("1–25 of 34")).toBeVisible();                                         // all customers, paged
+  await page.getByRole("button", { name: "Next" }).click();
+  await expect(page.getByText("26–34 of 34")).toBeVisible();
+  await page.getByLabel("Search").fill("delta works");
+  await expect(page.getByText("1–2 of 2")).toBeVisible();
+  await expect(page.getByRole("row", { name: /Delta Works/ })).toHaveCount(2);
+  await page.getByLabel("Search").fill("");
+
+  await page.getByRole("button", { name: "Add a customer" }).click();
+  const form = page.getByRole("form", { name: "Add a customer" });
+  await form.getByLabel("Name").fill("Nieuwe Klant BV");
+  await form.getByLabel("Postcode").fill("3511 AB");
+  await form.getByLabel("First site (optional)").fill("Hoofdlocatie");
+  await form.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByText("Customer added: Nieuwe Klant BV (100035).")).toBeVisible();
+  await page.getByLabel("Search").fill("nieuwe klant");
+  const row = page.getByRole("row", { name: /Nieuwe Klant BV/ });
+  await expect(row.getByText("Added in the PoC")).toBeVisible();
+  await row.getByRole("button", { name: "Open" }).click();                                          // goes to that customer's sites
+  await expect(page.getByRole("heading", { name: "Sites", exact: true })).toBeVisible();
+  await expect(page.getByRole("row", { name: /Hoofdlocatie/ })).toBeVisible();
+  await expect(page.getByText("1–1 of 1")).toBeVisible();
+
+  await menu.getByRole("button", { name: "Register", exact: true }).click();                        // the new customer works in the registration
+  await search(page, "100035");
+  await expect(page.getByRole("heading", { name: "Nieuwe Klant BV" })).toBeVisible();
+  await selectFirst(page);
+  await expect(page.getByLabel("Site", { exact: true }).locator("option", { hasText: "Hoofdlocatie" })).toHaveCount(1);
+});
+
+test("T36 data pages list all customers with a customer column; adding there asks for the customer", async ({ page }) => {
+  await openApp(page);
+  const menu = page.getByRole("navigation", { name: "Main navigation" });
+  await menu.getByRole("button", { name: "Sites", exact: true }).click();
+  const filter = page.locator(".customer-bar select");
+  await expect(filter).toHaveValue("");                                                              // no customer chosen: all of them
+  await expect(page.locator("th", { hasText: "Customer" }).first()).toBeVisible();                   // the customer column
+  await expect(page.getByText(/1–25 of \d+/)).toBeVisible();                                           // many sites, paged
+  const customerCells = await page.locator("table.data-table tbody tr td:first-child").allInnerTexts();
+  expect(new Set(customerCells).size).toBeGreaterThan(5);                                           // rows of many different customers
+  await page.getByLabel("Search").fill("site-009");
+  await expect(page.getByText(/1–\d+ of \d+/)).toBeVisible();
+  await expect(page.getByRole("row", { name: /SITE-009-1/ })).toBeVisible();
+  await expect(page.getByRole("row", { name: /SITE-001-1/ })).toHaveCount(0);                        // the search narrows the list
+  await page.getByLabel("Search").fill("");
+
+  await page.getByRole("button", { name: "Add a site" }).click();
+  const form = page.getByRole("form", { name: "Add a site" });
+  await form.getByLabel(/^Customer/).selectOption({ label: "Zorgcentrum Het Anker · 100009" });
+  await form.getByLabel("Name").fill("Synthetic depot 9");
+  await form.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByText("Added. It now appears in the registration dropdowns.")).toBeVisible();
+  await page.getByLabel("Search").fill("depot 9");
+  await expect(page.getByRole("row", { name: /Zorgcentrum Het Anker.*Synthetic depot 9/ })).toBeVisible();
+
+  await menu.getByRole("button", { name: "Orders", exact: true }).click();                          // newest orders first, across customers
+  await expect(page.getByText(/1–25 of \d+/)).toBeVisible();
+  await filter.selectOption({ label: "Zorgcentrum Het Anker · 100009" });
+  await expect(page.getByText(/1–25 of \d+/)).toBeVisible();
+  await expect(page.getByRole("row", { name: /Delta Works/ })).toHaveCount(0);                      // filtered to one customer
 });

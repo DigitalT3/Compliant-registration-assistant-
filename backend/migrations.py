@@ -138,7 +138,34 @@ def _migrate_v7(db) -> None:
     _add_column(db, "users", "must_change_password", "INTEGER DEFAULT 0")
 
 
-MIGRATIONS = {2: _migrate_v2, 3: _migrate_v3, 4: _migrate_v4, 5: _migrate_v5, 6: _migrate_v6, 7: _migrate_v7}
+def _migrate_v8(db) -> None:
+    """Customer data that can be added in the PoC: containers become records; added rows record who and when."""
+    for table in ("sites", "contracts", "orders"):
+        _add_column(db, table, "source", "TEXT DEFAULT 'seed'")
+        _add_column(db, table, "created_by", "TEXT")
+        _add_column(db, table, "created_at", "TEXT")
+    db.executescript("""
+    CREATE TABLE IF NOT EXISTS containers(
+      id TEXT PRIMARY KEY, customer_id TEXT REFERENCES customers(id), site_id TEXT REFERENCES sites(id),
+      number TEXT NOT NULL, status TEXT DEFAULT 'active', source TEXT DEFAULT 'seed',
+      created_by TEXT, created_at TEXT);
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_containers_number ON containers(lower(number));
+    CREATE INDEX IF NOT EXISTS ix_containers_site ON containers(site_id);
+    INSERT INTO containers(id,customer_id,site_id,number,source)
+      SELECT container, customer_id, site_id, container, 'seed' FROM orders
+      WHERE container IS NOT NULL GROUP BY container, customer_id, site_id
+      ON CONFLICT DO NOTHING;
+    """)
+
+
+def _migrate_v9(db) -> None:
+    """Customers can be added in the PoC too: record where a customer came from and who added it."""
+    _add_column(db, "customers", "source", "TEXT DEFAULT 'seed'")
+    _add_column(db, "customers", "created_by", "TEXT")
+
+
+MIGRATIONS = {2: _migrate_v2, 3: _migrate_v3, 4: _migrate_v4, 5: _migrate_v5, 6: _migrate_v6, 7: _migrate_v7, 8: _migrate_v8,
+              9: _migrate_v9}
 
 
 # PUBLIC_INTERFACE

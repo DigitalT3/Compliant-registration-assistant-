@@ -46,3 +46,18 @@ Complaint creation requires `customer_id`, `description`, `complaint_type`, `roo
 | `PATCH /api/users/{id}` | `users` (admin) | `{status, role, user_group}`; the last active admin cannot be disabled or demoted, and nobody can disable themselves |
 
 Send `Authorization: Bearer <token>`. While a temporary password is in use, every endpoint except `/api/auth/me`, `/api/auth/change-password`, `/api/auth/logout` and `/api/auth/options` answers 403 `password_change_required`. The `X-Demo-User` header is accepted only while `POC_DEMO_MODE=1`.
+
+## Customer data (permission `customer_data`: employee, admin)
+
+| Endpoint | Purpose |
+| --- | --- |
+| `GET /api/customers/{id}/context?all=true` | Sites, contracts, orders (up to 200 with `all`, otherwise 10) and containers |
+| `GET /api/customers?q=&limit=&offset=` | All customers with counts of sites, contracts, orders and containers |
+| `POST /api/customers` | `{name, postcode?, first_site?}`; next customer number (`100035`), id `C035`; an optional first site is created as `C035-S1` |
+| `GET /api/customer-data/{sites|contracts|orders|containers}?customer_id=&q=&limit=&offset=` | Rows across all customers (or one), each with `customer_name` and `customer_number`; `{items, total, limit, offset}` |
+| `POST /api/customers/{id}/sites` | `{name, postcode?}`; id `C009-S3`, reference `SITE-009-3` |
+| `POST /api/customers/{id}/contracts` | `{site_id, valid_from?, valid_to?}`; defaults to today and one year; status active or expired |
+| `POST /api/customers/{id}/containers` | `{site_id, number?}`; an empty number is generated (`BOX-009-3`); unique, case-insensitive |
+| `POST /api/customers/{id}/orders` | `{site_id, container, contract_id?, date?}`; the container and contract must belong to the site; reference `ORD-009-P1` |
+
+Added rows carry `source='poc_added'`, `created_by` and `created_at`, and an audit entry `customer_data_added`. A container added without an order can still be found by its number in the search.

@@ -1,6 +1,7 @@
 import { useEffect, useReducer, useState } from "react";
 import { get, post, ApiError } from "../../api/client";
 import { useI18n } from "../../i18n";
+import CustomerData from "./CustomerData";
 
 /** Best guess of what the employee typed, shown as a hint under the search box (the search itself tries every kind). */
 const guessType = (q: string) => {
@@ -67,7 +68,7 @@ function Prov({ p }: { p: string }) {
   return <span className={`badge prov-${p}`} title={t("prov.tip")}>{t(`prov.${p}`)}</span>;
 }
 
-export default function Register({ onViewHistory, config }: { onViewHistory: () => void; config: any }) {
+export default function Register({ onViewHistory, onManageData, meName, config }: { onViewHistory: () => void; onManageData: () => void; meName?: string; config: any }) {
   const { t, lang } = useI18n();
   const [s, set] = useReducer(reducer, undefined, load);
   const [err, setErr] = useState<string | null>(null);
@@ -75,6 +76,13 @@ export default function Register({ onViewHistory, config }: { onViewHistory: () 
   const [filter, setFilter] = useState("");
 
   useEffect(() => { sessionStorage.setItem("cra.register", JSON.stringify(s)); }, [s]);
+
+  // Coming back from the Customer data screen (or a reload): pick up sites, contracts, orders and containers added meanwhile.
+  useEffect(() => {
+    if (!s.customerId || s.saved) return;
+    sessionStorage.setItem("cra.currentCustomer", s.customerId);
+    get(`/api/customers/${s.customerId}/context`).then((ctx) => set({ ctx })).catch(() => undefined);
+  }, []);
 
   const val = (k: string) => s.fields[k]?.value || "";
   const label = (o: any) => (o ? o[lang] || o.en : "");
@@ -142,6 +150,7 @@ export default function Register({ onViewHistory, config }: { onViewHistory: () 
       customer_id: c.customer_id, site_id: c.matched_site_id, order_id: c.matched_order_id,
       complaint_type: s.fields.complaint_type?.value, session_id: sid,
     });
+    sessionStorage.setItem("cra.currentCustomer", c.customer_id);
     set({ sessionId: sid, customerId: c.customer_id, ctx, fields: pf.fields, step: 1, search: null });
     post(`/api/sessions/${sid}/events`, { type: "step_entered", step: "review_details" }).catch(() => undefined);
   });
@@ -180,6 +189,22 @@ export default function Register({ onViewHistory, config }: { onViewHistory: () 
                     container: { value: order?.container || null, provenance: order ? "prefilled" : "blank" } } });
     ev({ type: "field", field: "order_id", origin: provenance, changed: true });
   };
+
+  // A contract or order belongs to one site: picking one from another site switches the site too and re-prefills around it.
+  const pickRelated = (rowSite: string, extra: { contract_id?: string; order_id?: string }) => run(async () => {
+    const pf = await post("/api/prefill", {
+      customer_id: s.customerId, site_id: rowSite, order_id: extra.order_id ?? null, complaint_type: val("complaint_type") || null,
+      current_fields: keepManual(["site_id", "contract_id", "order_id", "container"]),
+    });
+    const prov = (k: string) => { const p = s.fields[k]?.provenance; return p === "prefilled" || p === "default" || p === "edited" ? "edited" : "manual"; };
+    const fields: Record<string, any> = { ...pf.fields, site_id: { value: rowSite, provenance: prov("site_id") } };
+    if (extra.contract_id) fields.contract_id = { value: extra.contract_id, provenance: prov("contract_id") };
+    if (extra.order_id) fields.order_id = { value: extra.order_id, provenance: prov("order_id") };
+    set({ fields });
+    ev({ type: "field", field: "site_id", origin: prov("site_id"), changed: true });
+  });
+  const pickContract = (c: any) => (c.site_id === val("site_id") ? setField("contract_id", c.id) : pickRelated(c.site_id, { contract_id: c.id }));
+  const pickOrder = (o: any) => (o.site_id === val("site_id") ? changeOrder(o.id) : pickRelated(o.site_id, { order_id: o.id }));
 
   const emptySummary = { what: "", where: "", when: "", impact: "", extras: {} };
 
@@ -364,7 +389,7 @@ export default function Register({ onViewHistory, config }: { onViewHistory: () 
       )}
 
       {s.step === 1 && s.ctx && (
-        <div className="cols">
+        <div>
           <div>
             {row("customer_name", <span>{val("customer_name")}</span>)}
             {row("customer_number", <span>{val("customer_number")}</span>)}
@@ -392,15 +417,12 @@ export default function Register({ onViewHistory, config }: { onViewHistory: () 
             {row("priority", optionSelect("priority", opts.priority || []))}
             {row("owner_team", optionSelect("owner_team", opts.owner_team || []))}
             {row("status", <span>{val("status") || "–"}</span>)}
-            {row("registering_user", <span>{val("registering_user")}</span>)}
+            {row("registering_user", <span>{meName || val("registering_user")}</span>)}
             {row("registration_date", <span>{val("registration_date")}</span>)}
           </div>
-          <aside className="card">
-            <h3>{t("ctx.title")}</h3>
-            <h4>{t("ctx.sites")}</h4><ul>{s.ctx.sites.map((x: any) => <li key={x.id}>{x.name} · {x.postcode}</li>)}</ul>
-            <h4>{t("ctx.contracts")}</h4><ul>{s.ctx.contracts.map((x: any) => <li key={x.id}>{x.reference} ({x.valid_to})</li>)}</ul>
-            <h4>{t("ctx.orders")}</h4><ul>{s.ctx.orders.map((x: any) => <li key={x.id}>{x.reference} · {x.container} · {x.date.slice(0, 10)}</li>)}</ul>
-          </aside>
+          <p><button className="secondary" onClick={onManageData}>{t("cd.manage")} →</button></p>
+          <CustomerData ctx={s.ctx} siteId={val("site_id")} contractId={val("contract_id")} orderId={val("order_id")}
+            onPickSite={changeSite} onPickContract={pickContract} onPickOrder={pickOrder} />
         </div>
       )}
 

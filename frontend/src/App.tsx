@@ -1,17 +1,21 @@
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { Fragment, FormEvent, useEffect, useMemo, useState } from "react";
 import { ApiError, clearSession, download, get, getDemoUser, hasToken, post, put, setDemoUser } from "./api/client";
 import { I18nProvider, useI18n } from "./i18n";
 import Register from "./features/register/Register";
 import AuthScreen, { ChangePassword, Me } from "./features/auth/Auth";
 import Users from "./features/users/Users";
+import CustomerDataPage, { Section } from "./features/customerdata/CustomerDataPage";
+import CustomersPage from "./features/customerdata/CustomersPage";
 
-type Page = "register" | "history" | "dashboard" | "rootcauses" | "evaluation" | "config" | "users" | "about";
+type Page = "register" | "history" | "customers" | Section | "dashboard" | "rootcauses" | "evaluation" | "config" | "users" | "about";
 
 /** Menu items and the permission each needs; items a role cannot use are not shown (the backend still enforces it). */
 const NAV: [Page, string | null][] = [
-  ["register", "register"], ["history", "read"], ["dashboard", "analytics"], ["rootcauses", "read"],
+  ["register", "register"], ["history", "read"], ["customers", "customer_data"], ["sites", "customer_data"], ["contracts", "customer_data"], ["orders", "customer_data"], ["containers", "customer_data"], ["dashboard", "analytics"], ["rootcauses", "read"],
   ["evaluation", "evaluate"], ["config", "configure"], ["users", "users"], ["about", null],
 ];
+
+const DATA_PAGES: Page[] = ["sites", "contracts", "orders", "containers"];
 
 /** The first screen each role needs. */
 const LANDING: Record<string, Page> = {
@@ -116,14 +120,16 @@ function AppShell() {
       <div className="app-body">
         <nav className="sidebar" aria-label="Main navigation">
           {visible.map((item) => (
-            <button
-              className={current === item ? "active" : ""}
-              key={item}
-              onClick={() => setPage(item)}
-              aria-current={current === item ? "page" : undefined}
-            >
-              {t(`nav.${item}`)}
-            </button>
+            <Fragment key={item}>
+              {item === "customers" && <div className="nav-group" role="presentation">{t("nav.group.customerdata")}</div>}
+              <button
+                className={`${current === item ? "active" : ""}${(DATA_PAGES.includes(item) || item === "customers") ? " nav-sub" : ""}`}
+                onClick={() => setPage(item)}
+                aria-current={current === item ? "page" : undefined}
+              >
+                {t(`nav.${item}`)}
+              </button>
+            </Fragment>
           ))}
         </nav>
         <main className="content">
@@ -133,7 +139,9 @@ function AppShell() {
                 onDone={(u) => { setMe(u); setChangingPw(false); setNotice(undefined); }} />
             </div>
           )}
-          {current === "register" && <Register config={config} onViewHistory={() => setPage("history")} />}
+          {current === "register" && <Register config={config} meName={me.name} onViewHistory={() => setPage("history")} onManageData={() => setPage("sites")} />}
+          {current === "customers" && <CustomersPage onOpen={() => setPage("sites")} />}
+          {DATA_PAGES.includes(current as Section) && <CustomerDataPage section={current as Section} onBack={() => setPage("register")} />}
           {current === "history" && <History config={config} />}
           {current === "dashboard" && <Dashboard />}
           {current === "rootcauses" && <RootCauses config={config} />}
