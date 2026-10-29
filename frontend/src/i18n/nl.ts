@@ -277,5 +277,6 @@ export const nl: Record<string, string> = {
   "users.temp.note": "Wordt maar één keer getoond. Geef het veilig door; de persoon moet het bij de eerste login wijzigen.",
   "users.temp.close": "Genoteerd",
   "users.created": "Account aangemaakt.",
-  "users.no_function": "– geen –"
+  "users.no_function": "– geen –",
+  "saving": "Opslaan…"
 };

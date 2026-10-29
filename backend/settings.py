@@ -1,10 +1,43 @@
 """Effective configuration: config.json + runtime overrides + environment variables."""
+import copy
 import json
 import os
+import time
 
 from . import db
 
 OVERRIDABLE = ("repeat_rule", "defaults")
+
+# The admin overrides are read from the database. Doing that on every request costs two network round
+# trips on a hosted database, so they are cached briefly and the cache is cleared whenever they change.
+_OVERRIDES: dict = {}
+_OVERRIDES_TTL_S = 15
+
+
+# PUBLIC_INTERFACE
+def invalidate_config() -> None:
+    """Forget cached overrides (call after changing config_versions or resetting the database)."""
+    _OVERRIDES.clear()
+
+
+def _overrides() -> dict:
+    key = db.location()
+    hit = _OVERRIDES.get(key)
+    if hit and time.monotonic() - hit[0] < _OVERRIDES_TTL_S:
+        return hit[1]
+    found = {}
+    try:
+        with db.connect() as conn:
+            for kind in OVERRIDABLE:
+                row = conn.execute(
+                    "SELECT content FROM config_versions WHERE kind=? AND active=1 "
+                    "AND version LIKE 'override-%' ORDER BY id DESC LIMIT 1", (kind,)).fetchone()
+                if row:
+                    found[kind] = json.loads(row["content"])
+    except db.DBError:
+        return {}  # database not initialised yet: file defaults apply (not cached)
+    _OVERRIDES[key] = (time.monotonic(), found)
+    return found
 
 
 # PUBLIC_INTERFACE
@@ -15,16 +48,8 @@ def get_config() -> dict:
     file stays the pristine default and every change is versioned and audited.
     """
     cfg = db.config()
-    try:
-        with db.connect() as conn:
-            for kind in OVERRIDABLE:
-                row = conn.execute(
-                    "SELECT content FROM config_versions WHERE kind=? AND active=1 "
-                    "AND version LIKE 'override-%' ORDER BY id DESC LIMIT 1", (kind,)).fetchone()
-                if row:
-                    cfg[kind] = json.loads(row["content"])
-    except db.DBError:
-        pass  # database not initialised yet: file defaults apply
+    for kind, content in _overrides().items():
+        cfg[kind] = copy.deepcopy(content)
     return cfg
 
 

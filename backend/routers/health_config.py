@@ -9,7 +9,7 @@ from .. import db
 from ..auth import require
 from ..dbutil import audit, connection
 from ..errors import ApiError
-from ..settings import ai_settings, get_config
+from ..settings import ai_settings, get_config, invalidate_config
 
 router = APIRouter()
 
@@ -83,6 +83,7 @@ def _override(conn, kind: str, content: dict, user: dict, before: dict) -> dict:
                  (kind, f"override-{n}", json.dumps(content, sort_keys=True), db.now()))
     audit(conn, user["id"], "configuration_changed", {"kind": kind, "before": before, "after": content})
     conn.commit()
+    invalidate_config()
     return content
 
 

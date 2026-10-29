@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 
 from backend import db, seed
 from backend.services import ai
+from backend.settings import invalidate_config
 
 
 PG_MODE = os.environ.get("POC_TEST_PG") == "1"
@@ -30,6 +31,7 @@ def postgres_schema():
 def isolated_database(monkeypatch):
     """Tests never touch a hosted database by accident: SQLite unless POC_TEST_PG=1. Demo accounts are on for tests."""
     monkeypatch.setenv("POC_DEMO_MODE", "1")
+    invalidate_config()
     if PG_MODE:
         monkeypatch.setenv("POC_DB", "postgres")
         monkeypatch.setenv("POC_PG_SCHEMA", PG_SCHEMA)

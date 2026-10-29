@@ -277,5 +277,6 @@ export const en: Record<string, string> = {
   "users.temp.note": "Shown only once. Give it to the person in a safe way; they must change it at first sign-in.",
   "users.temp.close": "I have noted it",
   "users.created": "Account created.",
-  "users.no_function": "– none –"
+  "users.no_function": "– none –",
+  "saving": "Saving…"
 };

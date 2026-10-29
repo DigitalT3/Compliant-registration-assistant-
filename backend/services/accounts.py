@@ -298,6 +298,8 @@ def update_user(conn, actor: dict, user_id: str, role=None, user_group=None, sta
         raise ApiError(409, "self_disable", "You cannot disable your own account.")
     new = {"role": role or target["role"], "user_group": user_group or target["user_group"],
            "status": status or target["status"]}
+    if all(new[k] == target[k] for k in new):
+        return public(target)          # nothing changes (e.g. a double click): no write, no audit entry
     conn.execute("UPDATE users SET role=?, user_group=?, status=? WHERE id=?",
                  (new["role"], new["user_group"], new["status"], user_id))
     audit(conn, actor["id"], "user_updated", {"user": user_id, "from": {k: target[k] for k in new}, "to": new})

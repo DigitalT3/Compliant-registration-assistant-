@@ -17,6 +17,7 @@ from datetime import timedelta
 from pathlib import Path
 
 from . import db
+from .settings import invalidate_config
 
 SEED_DIR = Path(__file__).resolve().parent / "seed_data"
 
@@ -217,6 +218,7 @@ def reset() -> None:
 
     Destructive by design; only call from the CLI ``--reset`` flag or tests.
     """
+    invalidate_config()
     if db.is_pg() and _truncate_current():
         seed_if_empty()
         return

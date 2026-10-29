@@ -206,3 +206,20 @@ def test_only_admins_create_people_and_input_is_validated(client):
     with db.connect() as conn:
         acts = [r["action"] for r in conn.execute("SELECT action FROM audit")]
     assert "account_created" in acts
+
+
+def test_repeated_updates_with_no_change_do_not_write_or_audit(client):
+    uid = register(client).json()["id"]
+    for _ in range(4):                                  # e.g. an impatient double click on Approve
+        assert approve(client, uid).status_code == 200
+    with db.connect() as conn:
+        n = conn.execute("SELECT count(*) FROM audit WHERE action='user_updated'").fetchone()[0]
+    assert n == 1
+
+
+def test_config_override_is_visible_at_once_despite_the_cache(client):
+    from backend.settings import get_config
+    rule = {k: v for k, v in get_config()["repeat_rule"].items() if k not in ("version", "last_updated")}
+    assert get_config()["repeat_rule"]["lookback_days"] != 30
+    client.put("/api/config/repeat-rule", headers=ADMIN, json={**rule, "lookback_days": 30})
+    assert get_config()["repeat_rule"]["lookback_days"] == 30
