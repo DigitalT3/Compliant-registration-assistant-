@@ -16,6 +16,8 @@ from . import sessions as sessions_svc
 DEFINITIONS = {
     "duration": "Server-recorded seconds from session start to save, saved sessions only; includes idle time.",
     "top_three_rate": "Share of saved complaints whose final cause was among AI candidates shown (n = sessions with candidates).",
+    "first_field_seconds": "Seconds from the form opening (when the search started) to the first field filled: by the customer lookup or by the employee. Median over sessions that have one.",
+    "first_entry_seconds": "Seconds from the form opening to the first field the employee entered or changed themselves (origin manual or edited).",
     "prefill_rate": "Fields prefilled or defaulted / tracked form fields, taken from each saved registration's final field origins.",
     "synthetic": "Includes only PoC-recorded sessions; seeded history has no sessions.",
 }
@@ -56,6 +58,31 @@ def _duration(r) -> float | None:
     return (datetime.fromisoformat(r["ended"]) - datetime.fromisoformat(r["started"])).total_seconds()
 
 
+def _first_field_seconds(conn, rows) -> dict:
+    """Per session: seconds from the form opening to the first field filled (by anyone: the lookup counts) and to the
+    first field the employee entered or changed (origin manual or edited). ``None`` when it never happened."""
+    from datetime import datetime
+    if not rows:
+        return {}
+    ph = ",".join("?" * len(rows))
+    started = {r["id"]: r["started"] for r in rows}
+    got = conn.execute("SELECT session_id, MIN(at) any_at, MIN(CASE WHEN origin IN ('manual','edited') THEN at END) entry_at "
+                       f"FROM field_events WHERE event_type='field' AND origin<>'blank' AND session_id IN ({ph}) GROUP BY session_id",
+                       list(started)).fetchall()
+
+    def secs(at, sid):
+        return None if not at else round(max((datetime.fromisoformat(at) - datetime.fromisoformat(started[sid])).total_seconds(), 0), 2)
+
+    return {g["session_id"]: {"first_field_seconds": secs(g["any_at"], g["session_id"]),
+                              "first_entry_seconds": secs(g["entry_at"], g["session_id"])} for g in got}
+
+
+def _spread(values) -> dict:
+    values = [v for v in values if v is not None]
+    return {"mean": round(statistics.mean(values), 2) if values else None,
+            "median": round(statistics.median(values), 2) if values else None, "n": len(values)}
+
+
 # PUBLIC_INTERFACE
 def summary(conn, f: dict) -> dict:
     """Aggregate metrics with sample sizes and empty-state flag."""
@@ -85,7 +112,12 @@ def summary(conn, f: dict) -> dict:
         ev = [dict(e) for e in conn.execute("SELECT step,event_type,at FROM step_events WHERE session_id=? ORDER BY id", (r["id"],))]
         for k, v in sessions_svc.step_durations(ev, r["ended"]).items():
             steps.setdefault(k, []).append(v)
-    out["step_seconds"] = {k: {"mean": round(statistics.mean(v), 2), "n": len(v)} for k, v in steps.items()}
+    out["step_seconds"] = {k: {"mean": round(statistics.mean(v), 2), "median": round(statistics.median(v), 2), "n": len(v)}
+                           for k, v in steps.items()}
+    out["step_cap_seconds"] = get_config()["metrics"].get("step_idle_cap_seconds")   # per visit; repeated visits add up
+    firsts = _first_field_seconds(conn, rows)
+    out["first_field_seconds"] = _spread(v["first_field_seconds"] for v in firsts.values())
+    out["first_entry_seconds"] = _spread(v["first_entry_seconds"] for v in firsts.values())
     fe = Counter(r[0] for r in conn.execute(
         f"SELECT origin FROM field_events WHERE event_type='field' AND session_id IN ({ph})", ids))
     final = Counter(r[0] for r in conn.execute(
@@ -181,6 +213,81 @@ def targets(conn, out: dict) -> list:
             for i, label, v, n, ok in rows]
 
 
+def _guard(rate: dict, min_n: int) -> dict:
+    """Hide a share that rests on fewer than ``min_n`` registrations: one or two are no basis to judge a person."""
+    return {"value": None, "n": rate["n"]} if rate["n"] < min_n else rate
+
+
+def _block(rows, final, top3, decisions, prefill_origins, min_n) -> dict:
+    """The measures for one employee, or for the whole team, from their sessions."""
+    saved = [r for r in rows if r["status"] == "saved"]
+    durs = [d for d in map(_duration, saved) if d is not None]
+    enough = len(durs) >= min_n
+
+    def accepted(field):                       # final origin "suggested" = the assistant's text or cause was kept
+        origins = [o for o in (final.get(r["id"], {}).get(field) for r in saved) if o and o != "blank"]
+        return _guard(_rate(sum(o == "suggested" for o in origins), len(origins)), min_n)
+
+    fields = [o for r in saved for o in final.get(r["id"], {}).values()]
+    prefill = _rate(sum(o in prefill_origins for o in fields), len(fields))
+    if len(saved) < min_n:
+        prefill = {"value": None, "n": len(saved)}
+    t3 = [top3[r["id"]] for r in saved if r["id"] in top3]
+    return {"started": len(rows), "saved": len(saved), "abandoned": sum(r["status"] == "abandoned" for r in rows),
+            "median_seconds": round(statistics.median(durs), 1) if enough else None,
+            "min_seconds": round(min(durs), 1) if enough else None, "max_seconds": round(max(durs), 1) if enough else None,
+            "summary_accepted": accepted("summary"), "cause_accepted": accepted("root_cause"),
+            "top3": _guard(_rate(sum(t3), len(t3)), min_n),
+            "other_share": _guard(_rate(sum(r["root_cause"] == "other" for r in saved), len(saved)), min_n),
+            "prefill_rate": prefill,
+            "repeat_rate": _guard(_rate(sum(bool(r["repeat_detected"]) for r in saved), len(saved)), min_n),
+            "repeat_decisions": len(decisions), "repeat_rejected": sum(d == "reject" for d in decisions),
+            "enough_data": enough}
+
+
+# PUBLIC_INTERFACE
+def employee_breakdown(conn, f: dict) -> dict:
+    """Per-employee view of how a team registers: volume, time and its spread, and how much of the assistant is kept.
+
+    Measures that rest on fewer than ``report.per_employee_min_n`` registrations are hidden. With
+    ``report.show_employee_names`` off, people appear as "Employee 1, 2, ..." and no ids are returned.
+    """
+    cfg = get_config()
+    min_n, names = cfg["report"]["per_employee_min_n"], cfg["report"]["show_employee_names"]
+    sessions_svc.sweep_abandoned(conn)
+    rows = _rows(conn, f)
+    out = {"min_n": min_n, "names_shown": names, "team": None, "employees": []}
+    if not rows:
+        return out
+    ph = ",".join("?" * len(rows))
+    ids = [r["id"] for r in rows]
+    final: dict = {}
+    for g in conn.execute(f"SELECT session_id,field,origin FROM field_events WHERE event_type='final' AND session_id IN ({ph})", ids):
+        final.setdefault(g["session_id"], {})[g["field"]] = g["origin"]
+    top3 = {g["session_id"]: int(g["in_top3"]) for g in conn.execute(
+        f"SELECT session_id,in_top3 FROM ai_events WHERE operation='classification_outcome' AND in_top3 IS NOT NULL "
+        f"AND session_id IN ({ph})", ids)}
+    decisions: dict = {}
+    for g in conn.execute(f"SELECT d.actor,d.decision FROM repeat_disputes d JOIN complaints c ON c.id=d.complaint_id "
+                          f"WHERE c.session_id IN ({ph})", ids):
+        decisions.setdefault(g["actor"], []).append(g["decision"])
+    origins = set(cfg["metrics"]["prefill_origins"])
+    people = {r["id"]: r["name"] for r in conn.execute(
+        f"SELECT id,name FROM users WHERE id IN ({','.join('?' * len({r['actor'] for r in rows}))})", list({r["actor"] for r in rows}))}
+    by_actor: dict = {}
+    for r in rows:
+        by_actor.setdefault(r["actor"], []).append(r)
+    out["team"] = _block(rows, final, top3, [d for v in decisions.values() for d in v], origins, min_n)
+    ordered = sorted(by_actor.items(), key=lambda kv: (-sum(r["status"] == "saved" for r in kv[1]), people.get(kv[0]) or kv[0]))
+    for i, (actor, mine) in enumerate(ordered, 1):
+        item = {"employee": (people.get(actor) or actor) if names else f"Employee {i}",
+                "team": mine[0]["user_group"], **_block(mine, final, top3, decisions.get(actor, []), origins, min_n)}
+        if names:
+            item["id"] = actor
+        out["employees"].append(item)
+    return out
+
+
 OUTCOMES = {"prefilled": "accepted", "default": "accepted", "suggested": "accepted", "edited": "changed",
             "manual": "typed", "blank": "empty"}
 
@@ -207,7 +314,10 @@ def session_list(conn, f: dict, page: int, size: int) -> dict:
     sessions_svc.sweep_abandoned(conn)
     rows = _rows(conn, f)
     items = []
-    for r in rows[(page - 1) * size: page * size]:
+    page_rows = rows[(page - 1) * size: page * size]
+    firsts = _first_field_seconds(conn, page_rows)
+    for r in page_rows:
         ev = [dict(e) for e in conn.execute("SELECT step,event_type,at FROM step_events WHERE session_id=? ORDER BY id", (r["id"],))]
-        items.append({**r, "duration_seconds": _duration(r), "step_seconds": sessions_svc.step_durations(ev, r["ended"])})
+        items.append({**r, "duration_seconds": _duration(r), "step_seconds": sessions_svc.step_durations(ev, r["ended"]),
+                      **firsts.get(r["id"], {"first_field_seconds": None, "first_entry_seconds": None})})
     return {"items": items, "total": len(rows), "page": page, "page_size": size}

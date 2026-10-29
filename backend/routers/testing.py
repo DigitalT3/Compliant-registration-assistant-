@@ -118,10 +118,11 @@ def export_sessions(mode: str | None = Query(None, pattern="^(assistant|plain)$"
     with connection() as conn:
         data = metrics.session_list(conn, f, 1, 100000)
     rows = [[i["id"], i["actor"], i["user_group"], i["mode"], i["participant_id"], i["scenario"], i["status"],
-             i["duration_seconds"], i["root_cause"], i["repeat_detected"], i["failure_status"]]
+             i["duration_seconds"], i["root_cause"], i["repeat_detected"], i["failure_status"],
+             i["first_field_seconds"], i["first_entry_seconds"]]
             + [i["step_seconds"].get(s) for s in steps] for i in data["items"]]
     return _csv(["session_id", "user", "group", "mode", "participant", "scenario", "status", "duration_s", "root_cause",
-                 "repeat", "failure"] + [f"{s}_s" for s in steps], rows, "sessions.csv")
+                 "repeat", "failure", "first_field_s", "first_entry_s"] + [f"{s}_s" for s in steps], rows, "sessions.csv")
 
 
 @router.get("/api/export/suggestions.csv", summary="Every tracked field of every saved complaint, for Power BI")
@@ -137,6 +138,28 @@ def export_suggestions(mode: str | None = Query(None, pattern="^(assistant|plain
     return _csv(["complaint_id", "session_id", "team", "user", "mode", "saved_at", "field", "origin", "outcome"],
                 [[i["complaint_id"], i["session_id"], i["team"], i["actor"], i["mode"], i["saved_at"], i["field"],
                   i["origin"], i["outcome"]] for i in items], "suggestions.csv")
+
+
+@router.get("/api/export/employees.csv", summary="How each employee registers, for Power BI")
+def export_employees(mode: str | None = Query(None, pattern="^(assistant|plain)$"), group: str | None = None,
+                     user: dict = Depends(require("analytics"))):
+    """One row per employee (and a first row for the team) with the same measures as the dashboard table.
+
+    Same team limits as the dashboard; shares that rest on too few registrations are left empty.
+    """
+    f = scope.scoped(user, {"mode": mode, "group": group})
+    with connection() as conn:
+        data = metrics.employee_breakdown(conn, f)
+    val = lambda r: r["value"]
+    cols = ["employee", "team", "started", "saved", "abandoned", "median_s", "min_s", "max_s", "summary_accepted",
+            "cause_accepted", "top3", "other_share", "prefill_rate", "repeat_rate", "repeat_decisions", "repeat_rejected",
+            "enough_data"]
+    line = lambda name, team, b: [name, team, b["started"], b["saved"], b["abandoned"], b["median_seconds"], b["min_seconds"],
+                                  b["max_seconds"], val(b["summary_accepted"]), val(b["cause_accepted"]), val(b["top3"]),
+                                  val(b["other_share"]), val(b["prefill_rate"]), val(b["repeat_rate"]), b["repeat_decisions"],
+                                  b["repeat_rejected"], int(b["enough_data"])]
+    rows = ([line("Team", "", data["team"])] if data["team"] else []) + [line(e["employee"], e["team"], e) for e in data["employees"]]
+    return _csv(cols, rows, "employees.csv")
 
 
 @router.get("/api/export/labels-sample.csv", summary="Blind labelling sample as CSV")

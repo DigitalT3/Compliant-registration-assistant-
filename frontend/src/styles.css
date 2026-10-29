@@ -76,6 +76,9 @@ label { display: grid; gap: .3rem; font-weight: 600; }
 .badge.mock { color: #6a4600; background: #fff1be; }
 .radio { display: flex; align-items: baseline; gap: .5rem; padding: .35rem; font-weight: 400; }
 .radio input, .checkbox input { width: auto; }
+.choices { display: flex; flex-wrap: wrap; align-items: center; gap: .25rem 1.5rem; margin: .25rem 0 .75rem; }
+.choices .radio { padding: .2rem 0; }
+.choices > input { flex: 1 1 260px; }
 .list { max-height: 220px; overflow: auto; border: 1px solid #d3ded9; padding: .35rem; }
 .nav { margin-top: 1.25rem; }
 .table-wrap { overflow-x: auto; background: #fff; border: 1px solid #d3ded9; border-radius: 8px; }
@@ -177,3 +180,4 @@ button.link:hover:not(:disabled) { background: none; }
 /* The one field the employee still has to choose on Review details */
 .row.needs-input select { border-color: #176d52; box-shadow: 0 0 0 2px #cfe9dc; }
 .hint-row { margin: -.25rem 0 .5rem; color: #52645c; font-size: .9rem; }
+.team-row td { background: #eff5f1; }

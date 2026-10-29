@@ -33,7 +33,7 @@ async function describe(page: Page, text: string, lang: "en" | "nl") {
 }
 
 const next = (page: Page) => page.getByRole("button", { name: "Next", exact: true }).click();
-const save = (page: Page) => page.getByRole("button", { name: "Save to PoC database", exact: true });
+const save = (page: Page) => page.getByRole("button", { name: "Save complaint", exact: true });
 const saved = (page: Page) => expect(page.getByRole("status")).toContainText(/Saved as POC-\d+ \(PoC database only\)/);
 
 test("T01 customer number, English text, suggested cause preselected, saved", async ({ page }) => {
@@ -159,6 +159,7 @@ test("T10 seeded repeat is flagged with evidence; the dispute is stored next to 
   await next(page);
   await expect(page.getByText(/Repeat complaint: 1 earlier matching complaint/)).toBeVisible();
   await expect(page.getByText(/POC-SEED-1/)).toBeVisible();
+  await expect(page.getByText("Rule draft-juul-v1: same customer, same site, same cause category, within 60 days. Provisional: to be confirmed by Juul (Renewi).")).toBeVisible();
   await page.getByRole("radio", { name: "Not a repeat" }).check();
   await page.getByLabel("Reason (required)").fill("Different container this time");
   await save(page).click();
@@ -212,6 +213,8 @@ test("T23 dashboard (team lead) shows PRD targets, groups and the plain vs assis
   await expect(page.getByRole("cell", { name: "plain", exact: true })).toBeVisible();
   await expect(page.getByRole("cell", { name: "assistant", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Export CSV" })).toBeVisible();
+  await expect(page.getByText(/\(median [\d.]+s, n = \d+\)/).first()).toBeVisible();                  // step card: mean and median
+  await expect(page.getByText("Each visit to a step counts at most 10 minutes, so a tab left open is not counted. Going back and forth adds the visits up.")).toBeVisible();
 });
 
 test("T24 interface switches to Dutch", async ({ page }) => {
@@ -748,4 +751,54 @@ test("T46 a real team lead signs in with their own password and sees only their 
   await expect(page.getByLabel("Group by").locator("option", { hasText: "User group" })).toHaveCount(0);
   const menu = page.getByRole("navigation", { name: "Main navigation" });
   await expect(menu.getByRole("button", { name: "Register" })).toHaveCount(0);                   // leads do not register
+  // The per-employee table, with real accounts and no demo header: the people of the lead's team only.
+  const people = page.locator("article", { has: page.getByRole("heading", { name: "By employee" }) });
+  await expect(people.getByRole("cell", { name: "Sanne Sales" })).toBeVisible();
+  await expect(people.getByRole("cell", { name: "Karel Klant" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Export employees CSV" })).toBeVisible();
+});
+
+test("T47 the About page lists what is still to be agreed and who confirms it", async ({ page }) => {
+  await openApp(page);
+  await page.getByRole("button", { name: "About" }).click();
+  await expect(page.getByText("Five-step registration")).toBeVisible();                           // no longer six
+  await expect(page.getByText("Still to be agreed")).toBeVisible();
+  await expect(page.getByRole("row", { name: /repeat_rule\.lookback_days.*Juul \(Renewi\)/ })).toBeVisible();
+  await expect(page.getByRole("row", { name: /taxonomy.*Glenn \/ process owners/ })).toBeVisible();
+});
+
+test("T48 the registration clock starts when the form opens, so finding the customer counts", async ({ page, request }) => {
+  await openApp(page);
+  await page.waitForTimeout(3000);                                                                // the employee takes a moment before searching
+  await search(page, "100009");
+  await selectFirst(page);
+  await page.getByLabel("Site", { exact: true }).selectOption("C009-S1");
+  await page.getByRole("button", { name: "Next", exact: true }).click();                           // review -> describe: a step event closes the first step
+  const rows = await (await request.get(`${API}/api/analytics/sessions`, { headers: ADMIN, params: { page_size: 1 } })).json();
+  const mine = rows.items[0];
+  expect(mine.step_seconds.find_customer).toBeGreaterThanOrEqual(3);                              // not the ~1 s of the lookup call
+  expect(mine.first_field_seconds).toBeGreaterThanOrEqual(3);                                      // lookup filled the first field after the search
+  await openApp(page, "demo.admin");
+  await page.getByRole("button", { name: "Dashboard" }).click();
+  await expect(page.getByText("First field filled (s)")).toBeVisible();
+  await expect(page.getByText("First own entry (s)")).toBeVisible();
+});
+
+test("T49 a team lead sees how each person of their team registers; an admin also sees the team column", async ({ page }) => {
+  await openApp(page, "demo.lead");
+  await page.getByRole("button", { name: "Dashboard" }).click();
+  const people = page.locator("article", { has: page.getByRole("heading", { name: "By employee" }) });
+  await expect(people).toBeVisible();
+  await expect(people.getByRole("cell", { name: "Whole team" })).toBeVisible();                  // the team as the first row, to compare with
+  await expect(people.getByRole("cell", { name: "Demo Employee A1" })).toBeVisible();            // a person of the lead's own team
+  await expect(people.getByRole("cell", { name: "Demo Employee B1" })).toHaveCount(0);           // never someone from another team
+  await expect(people.locator("th", { hasText: /^Group$/ })).toHaveCount(0);                      // one team: no team column
+  await expect(people.locator("th", { hasText: /^Employee$/ })).toBeVisible();                    // (so this check can fail)
+  await expect(people.getByText(/Shares based on fewer than 3 registrations are hidden/)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Export employees CSV" })).toBeVisible();
+
+  await openApp(page, "demo.admin");
+  await page.getByRole("button", { name: "Dashboard" }).click();
+  const all = page.locator("article", { has: page.getByRole("heading", { name: "By employee" }) });
+  await expect(all.locator("th", { hasText: /^Group$/ })).toBeVisible();                           // admins see every team
 });

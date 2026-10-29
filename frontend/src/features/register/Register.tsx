@@ -42,12 +42,13 @@ interface State {
   otherReason: string;
   repeat: any | null;
   sessionId: string | null;
+  openedAt: number | null;   // when the form was opened (ms): the registration clock starts here, not at the customer choice
   saved: any | null;
 }
 
 const init: State = {
   step: 0, q: "", search: null, customerId: null, ctx: null, fields: {}, text: "", textLang: "auto", summary: null, aiSummary: null,
-  summaryFailed: null, analysedText: "", email: "", participant: "", scenarioTag: "", mode: "assistant", emailNote: null, decisions: {}, cls: null, clsFailed: null, rootCause: "", causeOrigin: "manual", otherReason: "", repeat: null, sessionId: null, saved: null,
+  summaryFailed: null, analysedText: "", email: "", participant: "", scenarioTag: "", mode: "assistant", emailNote: null, decisions: {}, cls: null, clsFailed: null, rootCause: "", causeOrigin: "manual", otherReason: "", repeat: null, sessionId: null, openedAt: null, saved: null,
 };
 
 // Stepper state is kept in sessionStorage so a page reload does not lose the registration in progress.
@@ -88,9 +89,22 @@ export default function Register({ onViewHistory, meName, config }: { onViewHist
 
   const val = (k: string) => s.fields[k]?.value || "";
 
+  // The registration clock starts when the form is opened (a new complaint), not when the customer is chosen.
+  useEffect(() => { if (!s.sessionId && !s.openedAt) set({ openedAt: Date.now() }); }, [s.sessionId, s.openedAt]);   // eslint-disable-line react-hooks/exhaustive-deps
+
   // An order picked after the summary was made (back, choose an order, forward): fill the empty container extra
   // from it without a new AI call, so edits already made to the summary stay.
   const orderContainer = val("container"), ctype = val("complaint_type");
+  // The repeat rule in plain words, built from the active rule so it changes when the rule does.
+  const ruleLine = () => {
+    const rule = config?.repeat_rule || {}, r = s.repeat;
+    const same = (k: string) => (t(`repeat.key.${k}`) === `repeat.key.${k}` ? `${t("repeat.same")} ${k}` : t(`repeat.key.${k}`));
+    const what = [...(rule.match_keys || []).map(same),
+      ...(rule.cause_mode === "level1" ? [t("repeat.cause.level1")] : rule.cause_mode === "level2" ? [t("repeat.cause.level2")] : []),
+      t("repeat.within", { d: r.lookback_days })].join(", ");
+    const who = config?.provisional_meta?.["repeat_rule.match_keys"]?.owner_to_confirm;
+    return `${t("repeat.plain", { v: r.rule_version, what })} ${who ? t("repeat.provisional", { who }) : ""}`.trim();
+  };
   const otherNeedsReason = s.rootCause === "other" && !s.otherReason.trim();   // step 4: "Other" needs a reason before moving on
   useEffect(() => {
     const wants = (config?.summary?.by_type?.[ctype] || []).includes("container_no");
@@ -161,7 +175,8 @@ export default function Register({ onViewHistory, meName, config }: { onViewHist
   });
 
   const selectCandidate = (c: any) => run(async () => {
-    const sid = s.sessionId || (await post("/api/sessions", { scenario: s.scenarioTag || null, mode: s.mode, participant_id: s.participant || null })).session_id;
+    const sid = s.sessionId || (await post("/api/sessions", { scenario: s.scenarioTag || null, mode: s.mode, participant_id: s.participant || null,
+      opened_seconds_ago: s.openedAt ? Math.max(0, (Date.now() - s.openedAt) / 1000) : 0 })).session_id;
     const ctx = await get(`/api/customers/${c.customer_id}/context`);
     const pf = await post("/api/prefill", { origin,
       customer_id: c.customer_id, site_id: c.matched_site_id, order_id: c.matched_order_id,
@@ -575,9 +590,9 @@ export default function Register({ onViewHistory, meName, config }: { onViewHist
                 return (
                   <li key={m.id}>
                     {m.id} · {String(m.date || m.created || "").slice(0, 10)} · {m.cause || m.root_cause} · {m.status} {m.reason && <span className="muted">({m.reason})</span>}
-                    <div className="inline">
-                      <label><input type="radio" name={`d-${m.id}`} checked={d?.decision === "confirm"} onChange={() => setD({ decision: "confirm" })} /> {t("repeat.confirm")}</label>
-                      <label><input type="radio" name={`d-${m.id}`} checked={d?.decision === "reject"} onChange={() => setD({ decision: "reject" })} /> {t("repeat.reject")}</label>
+                    <div className="choices">
+                      <label className="radio"><input type="radio" name={`d-${m.id}`} checked={d?.decision === "confirm"} onChange={() => setD({ decision: "confirm" })} /> {t("repeat.confirm")}</label>
+                      <label className="radio"><input type="radio" name={`d-${m.id}`} checked={d?.decision === "reject"} onChange={() => setD({ decision: "reject" })} /> {t("repeat.reject")}</label>
                       {d?.decision === "reject" && (
                         <input aria-label={t("repeat.reason")} placeholder={t("repeat.reason")} maxLength={500} value={d.reason} onChange={(e) => setD({ reason: e.target.value })} />
                       )}
@@ -586,7 +601,8 @@ export default function Register({ onViewHistory, meName, config }: { onViewHist
                 );
               })}</ul>
               <p className="muted">{t("repeat.decision_note")}</p>
-              <p className="muted">{t("repeat.rule", { v: s.repeat.rule_version, d: s.repeat.lookback_days })} · {s.repeat.checked_at}</p>
+              <p className="muted">{ruleLine()}</p>
+              <p className="muted">{t("repeat.checked", { at: s.repeat.checked_at })}</p>
             </>
           ) : t("loading")}
           <button className="secondary" disabled={busy} onClick={checkRepeat}>{t("repeat.run")}</button>
@@ -606,6 +622,7 @@ export default function Register({ onViewHistory, meName, config }: { onViewHist
           </dl>
           {missing.length > 0 && <p className="warn">{t("review.missing", { f: missing.map((m) => t(`f.${m}`) === `f.${m}` ? m : t(`f.${m}`)).join(", ") })}</p>}
           <button disabled={busy || missing.length > 0} onClick={save}>{t("save")}</button>
+          <p className="muted">{t("save.note")}</p>
         </div>
       </>)}
 

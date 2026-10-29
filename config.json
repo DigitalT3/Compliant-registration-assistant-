@@ -550,5 +550,9 @@
   "origin_defaults": {
     "search": "phone",
     "email": "email"
+  },
+  "report": {
+    "per_employee_min_n": 3,
+    "show_employee_names": true
   }
 }

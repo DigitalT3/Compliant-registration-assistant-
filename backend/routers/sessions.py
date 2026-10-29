@@ -14,6 +14,8 @@ class SessionIn(BaseModel):
     scenario: str | None = Field(None, max_length=20)
     mode: str = Field("assistant", max_length=10, description="assistant or plain")
     participant_id: str | None = Field(None, max_length=40, description="Test participant tag (timed user test)")
+    opened_seconds_ago: float = Field(0, ge=0, le=86400, description="How long the form had been open when the customer was chosen "
+                                      "(client-measured elapsed time; the session starts that long ago, capped by the idle cap)")
 
 
 class EventIn(BaseModel):
@@ -35,7 +37,7 @@ class CompleteIn(BaseModel):
 def start(body: SessionIn, user: dict = Depends(require("register"))):
     """Create a session; returns its ID."""
     with connection() as conn:
-        return sessions.start(conn, user, body.scenario, body.mode, body.participant_id)
+        return sessions.start(conn, user, body.scenario, body.mode, body.participant_id, body.opened_seconds_ago)
 
 
 @router.post("/api/sessions/{session_id}/events", summary="Record a step or field event")
@@ -71,6 +73,21 @@ def summary(date_from: str | None = None, date_to: str | None = None, complaint_
                                     group_by, mode, participant))
     with connection() as conn:
         out = metrics.summary(conn, f)
+    team = scope.lead_team(user)
+    return {**out, "scope": {"team": team}} if team else out
+
+
+@router.get("/api/analytics/employees", summary="How each employee registers (team leads see their own team)")
+def employees(group: str | None = None, mode: str | None = Query(None, pattern="^(assistant|plain)$"),
+              user: dict = Depends(require("analytics"))):
+    """Per-employee volume, time and its spread, and how much of the assistant's text and cause is kept.
+
+    A team lead only gets the people of the team they lead. Shares based on fewer than ``report.per_employee_min_n``
+    registrations are hidden (``value`` is null).
+    """
+    f = scope.scoped(user, _filters(None, None, None, None, None, None, group, mode=mode))
+    with connection() as conn:
+        out = metrics.employee_breakdown(conn, f)
     team = scope.lead_team(user)
     return {**out, "scope": {"team": team}} if team else out
 

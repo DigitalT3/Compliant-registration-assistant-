@@ -6,7 +6,7 @@ This repository contains a standalone, desktop-first complaint-registration demo
 
 The React/Vite frontend provides a Dutch and English six-step workflow: customer lookup (customer number, order, container, name or postcode, or a pasted email), detail review, complaint description, one AI analysis call (summary, type and top-three causes), repeat checking with confirm/dispute, and PoC-only save. The FastAPI backend provides synthetic lookup and context, configurable per-type defaults with provenance, a two-level root-cause taxonomy, deterministic repeat detection, complaint persistence, session events, audit events, demo roles, and OpenAPI documentation.
 
-For the user test it also records test sessions (participant, scenario, assistant or plain-form mode), baseline stopwatch timings, exit interviews and blind expert labelling, and the dashboard evaluates each PRD target with its sample size and exports CSV (per-session timings and `suggestions.csv`, one row per field with accepted / changed / typed / empty, for Power BI). A team lead's account carries the team they lead and sees only that team on the dashboard and in the exports; admins and evaluators see all teams. Step times count at most 10 minutes per visit (`metrics.step_idle_cap_seconds`).
+For the user test it also records test sessions (participant, scenario, assistant or plain-form mode), baseline stopwatch timings, exit interviews and blind expert labelling, and the dashboard evaluates each PRD target with its sample size and exports CSV (per-session timings and `suggestions.csv`, one row per field with accepted / changed / typed / empty, for Power BI). A team lead's account carries the team they lead and sees only that team on the dashboard and in the exports; admins and evaluators see all teams. Step times count at most 10 minutes per visit (`metrics.step_idle_cap_seconds`; repeated visits add up) and the dashboard shows the mean and the median per step. The registration clock starts when the form is opened (not when the customer is chosen), and the dashboard shows the median time to the first field filled and to the first field the employee entered themselves. Sessions recorded before this change started at the customer choice, so their first-field time is shorter.
 
 AI behaviour is mock by default. The mock provider is explicitly labelled in the UI and API; it is deterministic and intended for offline demonstration, not as evidence of live-model quality.
 
@@ -113,3 +113,34 @@ Latest recorded run: 61 Python tests passed, 14 Chromium scripted cases passed (
 ## Limitations
 
 This is not production authentication, production security certification, GDPR approval, or a real-data evaluation. Live AI, real-user acceptance, current-process timing comparisons, expert-label agreement, and historical taxonomy analysis remain unverified. See the handover documents in `docs/` for requirements traceability, known issues, open questions, API details, and the demo script.
+
+## Field profile (time sink 2: many fields, few defaults)
+
+`scripts/field_profile.py` shows, for every field, how often it is filled, how many different values it has, the most common value and its share, and flags a field as a **default candidate** when one value covers at least 80 % of the filled records. It runs outside the app and changes nothing.
+
+```bash
+# Renewi's complaint history: one row per complaint, one column per field, one date column
+python -m scripts.field_profile --csv export.csv --date-column created --months 12 --out profile.csv
+
+# the PoC's own complaints (synthetic history and registrations made in the app)
+python -m scripts.field_profile --poc [--source poc|seed|all]
+```
+
+The export can use commas, semicolons or tabs. `--months 12` keeps the last twelve months (counted back from the newest complaint) and warns when the data covers less. Empty cells and placeholders such as `n/a`, `null` and `-` count as not filled. Free-text and personal-detail columns (description, name, e-mail, reason, notes and any long value) and identifier columns are never given a default candidate and their values are never printed, so the report can be shared. A candidate is only a starting point: the process owner decides whether the common value is the right default. On the PoC's synthetic history (about 5 months) it is a demonstration, not evidence about today's form.
+
+## Hosting next to the database
+
+From a laptop each database call takes about 180 ms, which inflates timed sessions. `docs/DEPLOY.md` explains how to run the backend (which then also serves the built front end) on Fly.io in Paris, next to the Supabase project, with the secrets set on the host. `python -m scripts.db_latency` measures the round trip from wherever it runs.
+
+## Running on one computer for timed sessions
+
+`scripts/run_local_server.sh` runs the whole PoC on a local database (no network delay), serves the pages and the API from one address and never resets data. See `docs/LOCAL_SERVER.md` for the first start, adding testers, a free tunnel for remote testers, and keeping the results.
+
+## A clean database for the real user test
+
+`scripts/run_usertest.sh` starts the PoC on a clean schema in the same Supabase project (synthetic history only, no test complaints or accounts) so the test set is not mixed with our own testing; the normal data stays untouched. See `docs/USER_TEST_DATABASE.md`.
+
+
+## Team lead: how each person registers
+
+The dashboard has a **By employee** table (and `employees.csv`): per person the saved and started registrations, the median time with its spread, how often the assistant's summary and cause were kept unchanged, the top-3 share, the "Other" share, the prefill rate and the repeat decisions, next to a "Whole team" row. A team lead sees only the people of their own team; admins and evaluators see every team. A share that rests on fewer than 3 registrations is hidden (`report.per_employee_min_n`), so nobody is judged on one or two cases. The view works with real accounts and real sign-in; people appear under the name of their account.

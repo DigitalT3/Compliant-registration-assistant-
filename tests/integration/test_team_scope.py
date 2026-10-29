@@ -149,3 +149,72 @@ def test_changing_a_leads_team_takes_effect_on_their_next_request(client):
     assert client.patch(f"/api/users/{lead_id}", headers=ADMIN, json={"function": "customer_service"}).status_code == 200
     moved = client.get("/api/analytics/summary", headers=lead).json()
     assert moved["scope"]["team"] == "customer_service" and moved["sessions"]["started"] == 1
+
+
+def test_old_step_names_count_under_the_merged_step():
+    events = [{"event_type": "step_entered", "step": "classify", "at": "2026-10-29T08:00:00+00:00"},
+              {"event_type": "step_entered", "step": "check_repeats", "at": "2026-10-29T08:01:00+00:00"},    # recorded before the merge
+              {"event_type": "step_entered", "step": "review_save", "at": "2026-10-29T08:01:20+00:00"},
+              {"event_type": "step_completed", "step": "review_save", "at": "2026-10-29T08:02:00+00:00"}]
+    assert sessions_svc.step_durations(events, None) == {"classify": 60.0, "repeat_save": 60.0}               # 20 s + 40 s
+
+
+def test_the_cap_is_per_visit_so_repeated_visits_add_up():
+    events = [{"event_type": "step_entered", "step": "review_details", "at": "2026-10-29T08:00:00+00:00"},
+              {"event_type": "step_entered", "step": "describe_complaint", "at": "2026-10-29T09:00:00+00:00"},   # 1 h idle
+              {"event_type": "step_entered", "step": "review_details", "at": "2026-10-29T09:01:00+00:00"},       # back again
+              {"event_type": "step_entered", "step": "describe_complaint", "at": "2026-10-29T10:01:00+00:00"}]   # another hour
+    got = sessions_svc.step_durations(events, None)
+    assert got["review_details"] == 1200.0 and got["describe_complaint"] == 60.0                                  # 600 + 600
+
+
+def test_dashboard_step_card_has_mean_median_and_the_cap(client):
+    register(client, headers=EMP, participant="PA")
+    register(client, headers=B1, participant="PB")
+    s = client.get("/api/analytics/summary", headers=ADMIN).json()
+    row = s["step_seconds"]["find_customer"]
+    assert set(row) == {"mean", "median", "n"} and row["n"] == 2
+    assert s["step_cap_seconds"] == 600
+
+
+def test_the_registration_clock_starts_when_the_form_opens(client):
+    """The session is created when the customer is chosen; the client says how long the form had been open."""
+    from datetime import datetime
+    seconds_ago = lambda started: (datetime.fromisoformat(db_now()) - datetime.fromisoformat(started)).total_seconds()
+    s = client.post("/api/sessions", headers=EMP, json={"opened_seconds_ago": 45}).json()
+    assert 45 <= seconds_ago(s["started"]) <= 60                                                  # the session began when the form opened
+    row = next(i for i in client.get("/api/analytics/sessions", headers=ADMIN).json()["items"] if i["id"] == s["session_id"])
+    assert row["started"] == s["started"]
+    long = client.post("/api/sessions", headers=EMP, json={"opened_seconds_ago": 5000}).json()    # an idle form: capped at 10 minutes
+    assert 600 <= seconds_ago(long["started"]) <= 620
+    assert client.post("/api/sessions", headers=EMP, json={"opened_seconds_ago": -1}).status_code == 422
+    assert client.post("/api/sessions", headers=EMP, json={}).status_code == 201                   # old clients still work
+
+
+def db_now():
+    from backend import db
+    return db.now()
+
+
+def test_time_to_first_field_and_first_own_entry(client):
+    sid = client.post("/api/sessions", headers=EMP, json={"opened_seconds_ago": 30}).json()["session_id"]
+    ev = lambda **b: client.post(f"/api/sessions/{sid}/events", headers=EMP, json={"type": "field", **b})
+    ev(field="customer_id", origin="prefilled")          # the lookup fills the first field
+    ev(field="channel", origin="blank")                  # a blank field is not "filled"
+    ev(field="complaint_type", origin="manual", changed=True)   # the employee's own entry
+    row = next(i for i in client.get("/api/analytics/sessions", headers=ADMIN).json()["items"] if i["id"] == sid)
+    assert 30 <= row["first_field_seconds"] <= 40 and row["first_field_seconds"] <= row["first_entry_seconds"] <= 45
+    s = client.get("/api/analytics/summary", headers=ADMIN).json()
+    assert s["first_field_seconds"]["n"] == 1 and s["first_entry_seconds"]["n"] == 1 and s["first_field_seconds"]["median"] >= 30
+    table = rows(client.get("/api/export/sessions.csv", headers=ADMIN))
+    head = table[0]
+    assert head[8:11] == ["root_cause", "repeat", "failure"] and head[11:13] == ["first_field_s", "first_entry_s"]
+    mine = next(r for r in table[1:] if r[0] == sid)
+    assert float(mine[11]) >= 30 and float(mine[12]) >= float(mine[11])
+
+
+def test_sessions_without_any_field_have_no_first_field_time(client):
+    sid = client.post("/api/sessions", headers=EMP, json={}).json()["session_id"]
+    row = next(i for i in client.get("/api/analytics/sessions", headers=ADMIN).json()["items"] if i["id"] == sid)
+    assert row["first_field_seconds"] is None and row["first_entry_seconds"] is None
+    assert client.get("/api/analytics/summary", headers=ADMIN).json()["first_field_seconds"] == {"mean": None, "median": None, "n": 0}

@@ -148,7 +148,7 @@ function AppShell() {
           {current === "evaluation" && <Evaluation config={config} />}
           {current === "config" && <Configuration config={config} onUpdated={setConfig} />}
           {current === "users" && <Users config={config} meId={me.id} />}
-          {current === "about" && <About />}
+          {current === "about" && <About config={config} />}
         </main>
       </div>
     </div>
@@ -251,12 +251,17 @@ function Dashboard() {
   const [groupBy, setGroupBy] = useState("group");
   const [mode, setMode] = useState("");
   const team: string | undefined = summary?.scope?.team;   // set for a team lead: the dashboard shows that team only
+  const [people, setPeople] = useState<any>(null);
 
   useEffect(() => {
     get("/api/analytics/summary", { group_by: groupBy, mode })
       .then((r) => { setSummary(r); setError(null); setNoTeam(false); if (r.scope && groupBy === "group") setGroupBy("mode"); })
       .catch((cause) => { setNoTeam(cause instanceof ApiError && cause.code === "team_required"); setError(cause instanceof ApiError ? cause.message : String(cause)); });
   }, [groupBy, mode]);
+
+  useEffect(() => {
+    get("/api/analytics/employees", { mode }).then(setPeople).catch(() => setPeople(null));
+  }, [mode]);
 
   const filters = (
     <div className="inline">
@@ -270,6 +275,7 @@ function Dashboard() {
         </select></label>
       <button className="secondary" onClick={() => download("/api/export/sessions.csv", "sessions.csv", { mode }).catch((c) => setError(String(c.message || c)))}>{t("dash.export")}</button>
       <button className="secondary" onClick={() => download("/api/export/suggestions.csv", "suggestions.csv", { mode }).catch((c) => setError(String(c.message || c)))}>{t("dash.export_suggestions")}</button>
+      <button className="secondary" onClick={() => download("/api/export/employees.csv", "employees.csv", { mode }).catch((c) => setError(String(c.message || c)))}>{t("dash.export_employees")}</button>
     </div>
   );
   const teamBanner = team && <p className="badge prov-prefilled" role="status">{t("dash.team", { team: team.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase()) })}</p>;
@@ -302,6 +308,8 @@ function Dashboard() {
         <Metric label={t("dash.sessions")} value={summary.sessions.started} note={`${summary.sessions.saved} saved`} />
         <Metric label={t("dash.duration")} value={d.mean ?? "–"} note={t("dash.n", { n: d.n })} />
         <Metric label="Median" value={d.median ?? "–"} note={t("dash.n", { n: d.n })} />
+        <Metric label={t("dash.first_field")} value={summary.first_field_seconds?.median ?? "–"} note={`${t("dash.median_note")} · ${t("dash.n", { n: summary.first_field_seconds?.n ?? 0 })}`} />
+        <Metric label={t("dash.first_entry")} value={summary.first_entry_seconds?.median ?? "–"} note={`${t("dash.median_note")} · ${t("dash.n", { n: summary.first_entry_seconds?.n ?? 0 })}`} />
         <Metric label={t("dash.baseline")} value={d.baseline_seconds ?? "–"}
           note={d.baseline_seconds ? `${t("dash.n", { n: d.baseline_n })} · ${d.faster_than_baseline === null ? "" : `${Math.round(d.faster_than_baseline * 100)}% ${t("dash.faster")}`}` : t("dash.no_baseline")} />
       </div>
@@ -322,6 +330,33 @@ function Dashboard() {
             ))}</tbody></table>
         </article>
       )}
+      {people?.employees?.length > 0 && (
+        <article className="card">
+          <h3>{t("dash.people")}</h3>
+          <p className="muted">{t("dash.people_note", { n: people.min_n })}</p>
+          <div className="table-wrap"><table>
+            <thead><tr>
+              <th>{t("dash.person")}</th>{!team && <th>{t("users.col.group")}</th>}<th>{t("dash.registrations")}</th><th>{t("dash.time_spread")}</th>
+              <th>{t("dash.summary_kept")}</th><th>{t("dash.cause_kept")}</th><th>Top 3</th><th>Other</th><th>{t("dash.prefilled")}</th><th>Repeat</th><th>{t("dash.repeat_rejected")}</th>
+            </tr></thead>
+            <tbody>{[{ ...people.team, employee: t("dash.team_row"), team: "" }, ...people.employees].map((e: any, i: number) => {
+              const pct = (r: any) => (r?.value === null || r?.value === undefined ? "–" : `${Math.round(r.value * 100)}%`);
+              const tip = (r: any) => t("dash.n", { n: r?.n ?? 0 });
+              return (
+                <tr key={`${e.employee}-${i}`} className={i === 0 ? "team-row" : undefined}>
+                  <td>{i === 0 ? <b>{e.employee}</b> : e.employee}</td>{!team && <td>{e.team}</td>}
+                  <td>{e.saved} / {e.started}</td>
+                  <td>{e.median_seconds === null ? "–" : `${e.median_seconds} (${e.min_seconds}–${e.max_seconds})`}</td>
+                  <td title={tip(e.summary_accepted)}>{pct(e.summary_accepted)}</td><td title={tip(e.cause_accepted)}>{pct(e.cause_accepted)}</td>
+                  <td title={tip(e.top3)}>{pct(e.top3)}</td><td title={tip(e.other_share)}>{pct(e.other_share)}</td>
+                  <td title={tip(e.prefill_rate)}>{pct(e.prefill_rate)}</td><td title={tip(e.repeat_rate)}>{pct(e.repeat_rate)}</td>
+                  <td>{e.repeat_decisions ? `${e.repeat_rejected} / ${e.repeat_decisions}` : "–"}</td>
+                </tr>
+              );
+            })}</tbody>
+          </table></div>
+        </article>
+      )}
       <div className="dashboard-grid">
         <article className="card">
           <h3>{t("dash.rates")}</h3>
@@ -337,7 +372,8 @@ function Dashboard() {
         </article>
         <article className="card">
           <h3>{t("dash.steps")}</h3>
-          {Object.entries(summary.step_seconds || {}).map(([step, value]: [string, any]) => <p key={step}><b>{step}</b>: {value.mean}s ({t("dash.n", { n: value.n })})</p>)}
+          {Object.entries(summary.step_seconds || {}).map(([step, value]: [string, any]) => <p key={step}><b>{step}</b>: {t("dash.step_line", { mean: value.mean, median: value.median, n: value.n })}</p>)}
+          {summary.step_cap_seconds && <p className="muted">{t("dash.steps_note", { m: Math.round(summary.step_cap_seconds / 60) })}</p>}
         </article>
         <article className="card">
           <h3>{t("dash.other")}</h3>
@@ -528,14 +564,22 @@ function Configuration({ config, onUpdated }: { config: any; onUpdated: (config:
   );
 }
 
-function About() {
+function About({ config }: { config: any }) {
   const { t } = useI18n();
+  const open = Object.entries(config?.provisional_meta || {}) as [string, any][];
   return (
     <section>
       <h2>{t("about.title")}</h2>
       <article className="card"><h3>{t("about.impl")}</h3><p>{t("about.impl.l")}</p></article>
       <article className="card"><h3>{t("about.mock")}</h3><p>{t("about.mock.l")}</p></article>
       <article className="card"><h3>{t("about.prov")}</h3><p>{t("about.prov.l")}</p></article>
+      <article className="card">
+        <h3>{t("about.open")}</h3>
+        <table><thead><tr><th>{t("about.open.item")}</th><th>{t("about.open.who")}</th></tr></thead>
+          <tbody>{open.map(([key, m]) => (
+            <tr key={key}><td><b>{key}</b><br /><small>{m.description || m.note}</small></td><td>{m.owner_to_confirm || m.status}</td></tr>
+          ))}</tbody></table>
+      </article>
     </section>
   );
 }
