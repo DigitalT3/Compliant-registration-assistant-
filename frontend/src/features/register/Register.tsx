@@ -315,6 +315,15 @@ export default function Register({ onViewHistory, meName, config }: { onViewHist
       [...extra].some((k) => norm(sm.extras?.[k]) !== norm(ai.extras?.[k]));
     return changed ? "edited" : "suggested";
   };
+  // Marker for one summary row: kept as the assistant wrote it (suggested), changed (edited), typed by hand, or empty.
+  const summaryMark = (k: string, extra = false) => {
+    const sm = s.summary, ai = s.aiSummary, norm = (v: any) => String(v ?? "").trim();
+    const v = norm(extra ? sm?.extras?.[k] : sm?.[k]);
+    if (!v) return "blank";
+    if (extra && (sm.context_extras || []).includes(k) && v === val("container")) return "prefilled";
+    if (!ai) return "manual";
+    return norm(extra ? ai.extras?.[k] : ai[k]) === v ? "suggested" : "edited";
+  };
   const finalProvenance = () => {
     const p: Record<string, string> = {};
     for (const k of ["customer_id", "site_id", "contract_id", "order_id", "container", "channel", "registration_date",
@@ -465,6 +474,7 @@ export default function Register({ onViewHistory, meName, config }: { onViewHist
 
       {s.step === 1 && s.ctx && (
         <div>
+          <p className="muted" role="note">{t("prov.legend")}</p>
           <div>
             {row("customer_name", <span>{val("customer_name")} <button type="button" className="secondary" onClick={() => goto(0)}>{t("review.change_customer")}</button></span>)}
             {row("customer_number", <span>{val("customer_number")}</span>)}
@@ -509,7 +519,7 @@ export default function Register({ onViewHistory, meName, config }: { onViewHist
 
       {s.step === 2 && (
         <div>
-          <label htmlFor="desc">{t("description")}</label>
+          <label htmlFor="desc">{t("description")}</label> <Prov p={s.text.trim() ? "manual" : "blank"} />
           <textarea id="desc" rows={6} maxLength={8000} value={s.text} onChange={(e) => set({ text: e.target.value })} />
           <div className="inline">
             <label htmlFor="tl">{t("description.lang")}</label>
@@ -532,6 +542,7 @@ export default function Register({ onViewHistory, meName, config }: { onViewHist
                   <label htmlFor={`s-${k}`}>{t(`summary.${k}`)}</label>
                   <input id={`s-${k}`} value={s.summary[k] || ""} placeholder={t("summary.unknown")}
                     onChange={(e) => set({ summary: { ...s.summary, [k]: e.target.value || null } })} />
+                  <Prov p={summaryMark(k)} />
                 </div>
               ))}
               {(config?.summary?.by_type?.[val("complaint_type")] || []).map((k: string) => (
@@ -539,7 +550,7 @@ export default function Register({ onViewHistory, meName, config }: { onViewHist
                   <label htmlFor={`x-${k}`}>{config.summary.extra_labels?.[k]?.[lang] || k}</label>
                   <input id={`x-${k}`} value={s.summary.extras?.[k] || ""} placeholder={t("summary.unknown")}
                     onChange={(e) => set({ summary: { ...s.summary, extras: { ...(s.summary.extras || {}), [k]: e.target.value || null } } })} />
-                  {(s.summary.context_extras || []).includes(k) && s.summary.extras?.[k] === val("container") && <Prov p="prefilled" />}
+                  <Prov p={summaryMark(k, true)} />
                 </div>
               ))}
             </div>
@@ -551,6 +562,11 @@ export default function Register({ onViewHistory, meName, config }: { onViewHist
               {(config?.types || []).map((x: any) => <option key={x.id} value={x.id}>{label(x)}</option>)}
             </select>
             <Prov p={s.fields.complaint_type?.provenance || "blank"} />
+          </div>
+          <div className="row">
+            <label>{t("col.cause")}</label>
+            <span>{causeLabel(cause) || "–"}{s.rootCause === "other" && s.otherReason.trim() ? `: ${s.otherReason}` : ""}</span>
+            <Prov p={causeOutcome()} />
           </div>
           {s.cls && (
             <div className="card">
@@ -624,13 +640,13 @@ export default function Register({ onViewHistory, meName, config }: { onViewHist
         <div className="card">
           <h3>{t("review.title")}</h3>
           <dl>
-            <dt>{t("f.customer_name")}</dt><dd>{val("customer_name")} ({val("customer_number")})</dd>
-            <dt>{t("f.site_id")}</dt><dd>{s.ctx?.sites.find((x: any) => x.id === val("site_id"))?.name || "–"}</dd>
-            <dt>{t("f.channel")}</dt><dd>{val("channel") || "–"}</dd>
-            <dt>{t("f.complaint_type")}</dt><dd>{label((config?.types || []).find((x: any) => x.id === val("complaint_type"))) || "–"}</dd>
-            <dt>{t("col.cause")}</dt><dd>{causeLabel(cause) || "–"}{s.rootCause === "other" && `: ${s.otherReason}`}</dd>
-            <dt>{t("description")}</dt><dd>{s.text || "–"}</dd>
-            {s.summary && <><dt>{t("summary")}</dt><dd>{["what", "where", "when", "impact"].map((k) => s.summary[k]).filter(Boolean).join(" · ")}</dd></>}
+            <dt>{t("f.customer_name")}</dt><dd>{val("customer_name")} ({val("customer_number")}) <Prov p={s.fields.customer_id?.provenance || "blank"} /></dd>
+            <dt>{t("f.site_id")}</dt><dd>{s.ctx?.sites.find((x: any) => x.id === val("site_id"))?.name || "–"} <Prov p={s.fields.site_id?.provenance || "blank"} /></dd>
+            <dt>{t("f.channel")}</dt><dd>{val("channel") || "–"} <Prov p={s.fields.channel?.provenance || "blank"} /></dd>
+            <dt>{t("f.complaint_type")}</dt><dd>{label((config?.types || []).find((x: any) => x.id === val("complaint_type"))) || "–"} <Prov p={s.fields.complaint_type?.provenance || "blank"} /></dd>
+            <dt>{t("col.cause")}</dt><dd>{causeLabel(cause) || "–"}{s.rootCause === "other" && `: ${s.otherReason}`} <Prov p={causeOutcome()} /></dd>
+            <dt>{t("description")}</dt><dd>{s.text || "–"} <Prov p={s.text.trim() ? "manual" : "blank"} /></dd>
+            {s.summary && <><dt>{t("summary")}</dt><dd>{["what", "where", "when", "impact"].map((k) => s.summary[k]).filter(Boolean).join(" · ")} <Prov p={summaryOutcome()} /></dd></>}
             <dt>{t("col.repeat")}</dt><dd>{s.repeat ? (s.repeat.is_repeat ? t("yes") : t("no")) : "–"}</dd>
           </dl>
           {missing.length > 0 && <p className="warn">{t("review.missing", { f: missing.map((m) => t(`f.${m}`) === `f.${m}` ? m : t(`f.${m}`)).join(", ") })}</p>}

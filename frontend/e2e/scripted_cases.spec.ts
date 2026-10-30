@@ -959,7 +959,7 @@ test("T53 FR-05: choosing each complaint type applies its documented defaults; t
   await page.getByLabel("Priority").selectOption("high");                                           // typed by hand: stays when the type changes
   await page.getByLabel("Complaint type").selectOption("service");
   await expect(page.getByLabel("Priority")).toHaveValue("high");
-  await expect(exact("Priority")).toContainText(/Edited|Manual/);
+  await expect(exact("Priority")).toContainText(/Edited|Typed/);
   await expect(page.getByLabel("Owner team")).toHaveValue("operations");                            // the rest follows the new type
 
   await page.getByRole("button", { name: "About" }).click();                                        // documented in the app too
@@ -967,4 +967,56 @@ test("T53 FR-05: choosing each complaint type applies its documented defaults; t
   await expect(table.getByRole("row", { name: /Billing.*email.*customer_service.*5/ })).toBeVisible();
   await expect(table.getByRole("row", { name: /Collection service.*operations.*2/ })).toBeVisible();
   await expect(table.getByRole("row", { name: /Conduct \/ other.*customer_service.*3/ })).toBeVisible();
+});
+
+test("T54 FR-06: a marker on every field shows prefilled, default, suggested, typed or edited, and the log records the same", async ({ page, request }) => {
+  const row = (label: string) => page.locator(".row").filter({ has: page.locator("label", { hasText: new RegExp(`^${label}$`) }) });
+  await openApp(page);
+  await search(page, "100019");
+  await selectFirst(page);
+  await expect(page.getByRole("note")).toContainText("Marker per field");                              // a legend explains the markers
+  for (const label of ["Customer", "Customer number", "Site", "Contract", "Order", "Container", "Registered by", "Registration date"])
+    await expect(row(label).first()).toContainText("Prefilled");                                       // from the customer data
+  for (const label of ["Channel", "Priority", "Status"]) await expect(row(label)).toContainText("Default");   // from the complaint type / start
+  await expect(row("Complaint type")).toContainText("Blank");
+  await page.getByLabel("Channel").selectOption("email");                                              // the employee changes a filled value
+  await expect(row("Channel")).toContainText("Edited");
+  await page.getByLabel("Complaint type").selectOption("service");
+  await expect(row("Complaint type")).toContainText("Typed");                                          // chosen by hand
+  await expect(row("Owner team")).toContainText("Default");
+
+  await next(page);                                                                                    // describe
+  await expect(page.getByText("Blank", { exact: true }).first()).toBeVisible();
+  await page.getByLabel("Complaint description").fill("The container at our depot was not emptied on Tuesday, it was missed again.");
+  await expect(page.locator("section").getByText("Typed", { exact: true }).first()).toBeVisible();     // the description is typed
+  await page.getByRole("button", { name: "Analyse and continue", exact: true }).click();
+
+  await expect(row("What")).toContainText("Suggested");                                                // the assistant's text, kept
+  await expect(row("Container no.")).toContainText("Prefilled");                                       // from the order
+  await expect(row("Cause")).toContainText("Suggested");
+  await page.getByLabel("Impact").fill("Overflowing bin, customer upset");
+  await expect(row("Impact")).toContainText("Edited");                                                 // the assistant's text, changed
+  await page.getByRole("radio", { name: /Late collection/ }).first().check();
+  await expect(row("Cause")).toContainText("Edited");
+
+  await next(page);                                                                                    // repeat check and save: the overview carries markers too
+  const overview = page.locator("dl");
+  for (const [label, marker] of [["Customer", "Prefilled"], ["Site", "Prefilled"], ["Channel", "Edited"], ["Complaint type", "Typed"],
+                                 ["Cause", "Edited"], ["Complaint description", "Typed"], ["Summary", "Edited"]])
+    await expect(overview.locator("dt", { hasText: new RegExp(`^${label}$`) }).locator("xpath=following-sibling::dd[1]")).toContainText(marker);
+  await save(page).click();
+  await saved(page);
+  const id = (await page.getByRole("status").innerText()).match(/COM-\d+/)![0];
+
+  const csv = await (await request.get(`${API}/api/export/suggestions.csv`, { headers: ADMIN })).text();   // the log, as the team lead / Power BI see it
+  const rows = csv.split("\n").filter((l) => l.startsWith(id + ","));
+  const line = (field: string) => rows.find((l) => l.split(",")[6] === field) || "";
+  expect(line("customer_id")).toContain(",prefilled,accepted");
+  expect(line("priority")).toContain(",default,accepted");
+  expect(line("channel")).toContain(",edited,changed");
+  expect(line("complaint_type")).toContain(",manual,typed");
+  expect(line("description")).toContain(",manual,typed");
+  expect(line("summary")).toContain(",edited,changed");
+  expect(line("root_cause")).toContain(",edited,changed");
+  expect(rows.length).toBe(15);                                                                         // every tracked field is in the log
 });
