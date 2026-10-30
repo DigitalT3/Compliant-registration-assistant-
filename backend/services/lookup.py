@@ -25,17 +25,15 @@ _DETAIL_MAX_CANDIDATES = 5   # two extra queries per card: skip them for broad s
 
 
 def _detail(conn, card: dict) -> None:
-    """Add the customer's contracts and its three most recent orders (at the matched site, if any) to a result card."""
+    """Add the customer's contracts and its ten most recent orders (all sites, newest first) to a result card."""
     card["contracts"] = [
         {"id": r["id"], "reference": r["reference"], "site_id": r["site_id"], "valid_to": (r["valid_to"] or "")[:10],
          "active": r["status"] == "active"}
         for r in conn.execute("SELECT id,reference,site_id,status,valid_to FROM contracts WHERE customer_id=? "
                               "ORDER BY id", (card["customer_id"],))]
-    sql, args = "SELECT id,reference,container,site_id,date,status FROM orders WHERE customer_id=?", [card["customer_id"]]
-    if card["matched_site_id"]:
-        sql, args = sql + " AND site_id=?", args + [card["matched_site_id"]]
-    card["recent_orders"] = [dict(r) | {"date": (r["date"] or "")[:10]}
-                             for r in conn.execute(sql + " ORDER BY date DESC LIMIT 3", args)]
+    card["recent_orders"] = [dict(r) | {"date": (r["date"] or "")[:10]} for r in conn.execute(
+        "SELECT id,reference,container,site_id,date,status FROM orders WHERE customer_id=? ORDER BY date DESC, id DESC LIMIT 10",
+        (card["customer_id"],))]
 
 
 def _like(q: str) -> str:
@@ -158,6 +156,6 @@ def context(conn, customer_id: str, site_id: str | None = None, everything: bool
     sql, args = "SELECT * FROM orders WHERE customer_id=?", [customer_id]
     if site_id:
         sql, args = sql + " AND site_id=?", args + [site_id]
-    orders = [dict(r) for r in conn.execute(sql + f" ORDER BY date DESC LIMIT {200 if everything else 10}", args)]
+    orders = [dict(r) for r in conn.execute(sql + f" ORDER BY date DESC, id DESC LIMIT {200 if everything else 10}", args)]
     containers = [dict(r) for r in conn.execute("SELECT * FROM containers WHERE customer_id=? ORDER BY number", (customer_id,))]
     return {"customer": dict(cust), "sites": sites, "contracts": contracts, "orders": orders, "containers": containers}

@@ -446,8 +446,8 @@ export default function Register({ onViewHistory, meName, config }: { onViewHist
               )}
               {c.recent_orders?.length > 0 && (
                 <div className="card-detail">
-                  <strong>{t("search.recent")}:</strong>
-                  <ul>{c.recent_orders.map((o: any) => <li key={o.id}>{o.reference} · {o.container} · {o.date} · {o.status}</li>)}</ul>
+                  <strong>{t("search.recent", { n: c.recent_orders.length })}:</strong>
+                  <ul>{c.recent_orders.map((o: any) => <li key={o.id}>{o.reference} · {o.container} · {o.date} · {o.status} · {c.sites.find((x: any) => x.id === o.site_id)?.name || ""}</li>)}</ul>
                 </div>
               )}
               <button autoFocus={s.search.count === 1} disabled={busy} onClick={() => selectCandidate(c)}>

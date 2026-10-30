@@ -427,7 +427,7 @@ export const nl: Record<string, string> = {
   "cd.open": "Openen",
   "cd.need_site": "Deze klant heeft nog geen locatie. Voeg eerst een locatie toe.",
   "search.contracts": "Contracten",
-  "search.recent": "Recente orders",
+  "search.recent": "Laatste {n} orders",
   "search.valid_to": "geldig tot {date}",
   "search.no_active_contract": "Geen actief contract",
   "search.expired": "verlopen {date}",

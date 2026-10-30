@@ -427,7 +427,7 @@ export const en: Record<string, string> = {
   "cd.open": "Open",
   "cd.need_site": "This customer has no site yet. Add a site first.",
   "search.contracts": "Contracts",
-  "search.recent": "Recent orders",
+  "search.recent": "Last {n} orders",
   "search.valid_to": "valid to {date}",
   "search.no_active_contract": "No active contract",
   "search.expired": "expired {date}",

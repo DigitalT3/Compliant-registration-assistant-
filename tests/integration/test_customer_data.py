@@ -168,18 +168,18 @@ def search(client, q):
     return client.get("/api/customers/search", headers=EMP, params={"q": q}).json()
 
 
-def test_result_card_has_contracts_and_the_three_latest_orders(client):
+def test_result_card_has_contracts_and_the_ten_latest_orders(client):
     card = search(client, "100009")["candidates"][0]
     assert [(c["reference"], c["active"], c["valid_to"]) for c in card["contracts"]] == [
         ("CON-009-1", True, "2027-08-24"), ("CON-009-2", True, "2027-08-24")]
-    assert len(card["recent_orders"]) == 3
+    assert len(card["recent_orders"]) == 10
     dates = [o["date"] for o in card["recent_orders"]]
     assert dates == sorted(dates, reverse=True) and {"reference", "container", "status"} <= set(card["recent_orders"][0])
 
 
-def test_card_orders_follow_the_matched_site_and_expired_contracts_are_flagged(client):
+def test_card_shows_the_customers_orders_over_all_sites_and_flags_expired_contracts(client):
     by_order = search(client, "ORD-002-10")["candidates"][0]
-    assert {o["site_id"] for o in by_order["recent_orders"]} == {by_order["matched_site_id"]}   # only that site's orders
+    assert len(by_order["recent_orders"]) == 10 and {o["site_id"] for o in by_order["recent_orders"]} >= {by_order["matched_site_id"]}   # the customer's, not only that site's
     expired = search(client, "100021")["candidates"][0]                                         # the seeded expired-contract customer
     assert [c["active"] for c in expired["contracts"]] == [False]
 
