@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import { ApiError, get, post, setDemoUser, setToken } from "../../api/client";
 import { useI18n } from "../../i18n";
+import { Icon } from "../../ui";
 
 export type Me = { must_change_password?: number | boolean; id: string; name: string; email?: string | null; role: string; user_group: string; function?: string | null; permissions: string[] };
 
@@ -47,13 +48,27 @@ export default function AuthScreen({ notice, onSignedIn }: { notice?: string; on
   });
 
   return (
-    <main className="auth-page">
+    <main className="auth-page auth-split">
+      <aside className="auth-aside">
+        <div className="auth-brand"><span className="brand-mark" aria-hidden="true">R</span><span><strong>Renewi</strong><small>{t("app.title")}</small></span></div>
+        <div className="auth-hero">
+          <p className="auth-hero-title">{t("auth.hero.title")}</p>
+          <ul>
+            {["customers", "register", "rca"].map((ic, i) => (
+              <li key={ic}><span className="hero-icon"><Icon name={ic} size={18} /></span><span>{t(`auth.hero.${i + 1}`)}</span></li>
+            ))}
+          </ul>
+        </div>
+        <p className="auth-foot">DigitalT3 · Renewi</p>
+      </aside>
+      <div className="auth-main">
       <div className="auth-card">
         <select className="lang" aria-label={t("language")} value={lang} onChange={(e) => setLang(e.target.value as "nl" | "en")}>
           <option value="nl">Nederlands</option><option value="en">English</option>
         </select>
         <h1>{t("app.title")}</h1>
-        <p className="poc-banner">{t("auth.intro")}</p>
+        <p className="auth-welcome">{tab === "in" ? t("auth.welcome.in") : t("auth.welcome.up")}</p>
+        <p className="poc-banner">{tab === "in" ? t("auth.intro") : t("auth.welcome.up.sub")}</p>
         {notice && <p className="warn" role="status">{notice}</p>}
         {done && <p className="ok" role="status">{done}</p>}
         {error && <p className="error" role="alert">{error}</p>}
@@ -106,6 +121,7 @@ export default function AuthScreen({ notice, onSignedIn }: { notice?: string; on
             <button className="secondary primary" disabled={busy} onClick={demo}>{t("auth.demo.btn")}</button>
           </details>
         )}
+      </div>
       </div>
     </main>
   );
