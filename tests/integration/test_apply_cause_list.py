@@ -114,3 +114,19 @@ def test_the_repeat_rule_sees_a_retired_cause_in_its_replacement(client):
     for r in cfg["retired_causes"]:
         target = causes_by_id(cfg)[r["merged_into"]]
         assert (r["level1"], r["level2"]) == (target["level1"], target["level2"])
+
+
+def test_the_catch_all_other_stays_live_even_when_the_proposal_leaves_it_out():
+    from backend.services import taxonomy_apply
+    from backend.settings import get_config
+    cfg = get_config()
+    prop = {"categories": [{"id": "collection", "name_en": "Collection", "name_nl": "Ophaling", "definition": "d", "examples": ["a", "b"],
+                            "covers_existing": ["missed", "late", "access"], "covers_themes": []},
+                           {"id": "billing", "name_en": "Billing", "name_nl": "Facturatie", "definition": "d", "examples": ["a", "b"],
+                            "covers_existing": ["invoice", "weighing"], "covers_themes": []}]}
+    built = taxonomy_apply.build_live(cfg, prop)
+    ids = {c["id"] for c in built["root_causes"]}
+    assert "other" in ids and {c["id"] for c in built["root_cause_categories"]} >= {"other"}
+    retired = {c["id"]: c["merged_into"] for c in built["retired_causes"]}
+    assert "other" not in retired and retired["missed"] == "collection" and retired["invoice"] == "billing"
+    assert retired["conduct"] == "other"                              # a cause the proposal did not place goes to the catch-all, not to a random category

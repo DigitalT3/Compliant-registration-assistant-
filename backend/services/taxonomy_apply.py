@@ -59,6 +59,11 @@ def build_live(cfg: dict, proposal: dict) -> dict:
         causes.append({"id": cid, "level1": cid, "level2": cid, "en": c["name_en"], "nl": c["name_nl"], "definition": c["definition"],
                        "examples": ", ".join(c["examples"]), "type": None if cid == "other" else _majority_type(covered)})
         cats.append({"id": cid, "en": c["name_en"], "nl": c["name_nl"]})
+    if "other" not in {c["id"] for c in causes}:                        # the catch-all always stays: "Other" needs a reason, and unknown cases need somewhere to go
+        keep = next((c for c in cfg["root_causes"] if c["id"] == "other"), None)
+        if keep:
+            causes.append({**keep})
+            cats.append(next((c for c in cfg.get("root_cause_categories", []) if c["id"] == keep.get("level1")), {"id": "other", "en": "Other", "nl": "Overig"}))
     new_by_id = {c["id"]: c for c in causes}
     target_of = {}                                                       # old cause id -> category id that replaces it
     for c in proposal["categories"]:
@@ -72,7 +77,7 @@ def build_live(cfg: dict, proposal: dict) -> dict:
     for oid, old in active_old.items():
         if oid in new_by_id:
             continue
-        to = target_of.get(oid, "other" if "other" in new_by_id else causes[-1]["id"])
+        to = target_of.get(oid, "other" if "other" in new_by_id else causes[-1]["id"])    # left out by the proposal: the catch-all
         retired.append({**old, "retired": True, "merged_into": to, "level1": new_by_id[to]["level1"], "level2": new_by_id[to]["level2"]})
     return {"root_causes": causes, "root_cause_categories": cats, "retired_causes": retired}
 
