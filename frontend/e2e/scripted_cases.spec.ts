@@ -1256,3 +1256,26 @@ test("T63 FR-15: a registration that was started but not saved is listed on the 
   await page.getByRole("tab", { name: "Saved records" }).click();
   await expect(page.getByRole("status")).toContainText(/saved records/);
 });
+
+test("T64 FR-17 dashboard: time per registration, Other share, suggestion acceptance and repeat rate, overall and by user group", async ({ page, request }) => {
+  const emp = { "X-Demo-User": "demo.emp.b1" };                                                      // a user group of its own (group_b)
+  for (const [cust, site, text] of [["C005", "C005-S1", "Container missed again."], ["C008", "C008-S1", "Container missed again."]]) {
+    const sid = (await (await request.post(`${API}/api/sessions`, { headers: emp, data: { mode: "assistant" } })).json()).session_id;
+    const cls = (await (await request.post(`${API}/api/complaints/classify`, { headers: emp, data: { text, session_id: sid } })).json()).result.candidates;
+    await request.post(`${API}/api/complaints`, { headers: emp, data: { customer_id: cust, site_id: site, channel: "phone", complaint_type: "service", root_cause: cls[0].root_cause_id,
+      description: text, session_id: sid, field_provenance: { root_cause: "suggested", summary: "suggested", complaint_type: "suggested" } } });
+  }
+  await openApp(page, "demo.admin");
+  await page.getByRole("button", { name: "Dashboard" }).click();
+  await expect(page.getByText("Duration (s)").first()).toBeVisible();                               // time per registration
+  const acc = page.getByLabel("Suggestion acceptance");
+  for (const l of ["First cause kept", "Cause within top 3", "Summary kept", "Type kept"]) await expect(acc.getByText(l)).toBeVisible();
+  await expect(acc.locator(".bar-row", { hasText: "First cause kept" })).toContainText("%");
+  const groups = page.locator("article.card", { hasText: "By user group" });
+  for (const h of ["Duration (s)", "Other", "First cause kept", "Cause within top 3", "Summary kept", "Repeat"]) await expect(groups.locator("th", { hasText: h }).first()).toBeVisible();
+  const row = groups.locator("tbody tr", { hasText: "group_b" });
+  await expect(row).toContainText("%");                                                              // shares for that group, with their n
+  await expect(row).toContainText("n=");
+  await page.getByLabel("Group by").selectOption("mode");                                            // other ways to cut it still work
+  await expect(page.locator("article.card", { hasText: "By mode" }).locator("tbody tr").first()).toBeVisible();
+});

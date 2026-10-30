@@ -145,7 +145,7 @@ function AppShell() {
           {DATA_PAGES.includes(current as Section) && <CustomerDataPage section={current as Section} onBack={() => setPage("register")} />}
           {current === "history" && <History config={config} />}
           {current === "audit" && <AuditTrail config={config} />}
-          {current === "dashboard" && <Dashboard />}
+          {current === "dashboard" && <Dashboard config={config} />}
           {current === "rootcauses" && <RootCauses config={config} canReview={me.permissions.includes("review_taxonomy")} onReviewed={(review: any) => setConfig({ ...config, review })} />}
           {current === "readout" && <Readout canDecide={me.permissions.includes("decide")} />}
           {current === "evaluation" && <Evaluation config={config} />}
@@ -246,8 +246,8 @@ function History({ config }: { config: any }) {
   );
 }
 
-function Dashboard() {
-  const { t } = useI18n();
+function Dashboard({ config }: { config: any }) {
+  const { t, lang } = useI18n();
   const [summary, setSummary] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
   const [noTeam, setNoTeam] = useState(false);
@@ -292,10 +292,11 @@ function Dashboard() {
     ["Save", summary.sessions.save_rate],
     ["Top 3", summary.classification.top_three_rate],
     ["Prefill", summary.fields.prefill_rate],
-    ["Other", summary.classification.other_share],
-    ["Repeat", summary.repeat.rate],
+    [t("dash.other_short"), summary.classification.other_share],
+    [t("col.repeat"), summary.repeat.rate],
     ["AI", summary.ai.success_rate],
   ];
+  const groupLabel = (k: string) => (groupBy === "group" ? (config?.functions || []).find((x: any) => x.id === k)?.[lang] || k : k);
   const causes = Object.entries(summary.classification.by_root_cause || {}) as [string, number][];
   const maxCause = Math.max(1, ...causes.map(([, count]) => count));
   const d = summary.duration_seconds;
@@ -327,10 +328,11 @@ function Dashboard() {
       {summary.groups && (
         <article className="card">
           <h3>{t("dash.groups", { by: t(`dash.by.${groupBy}`) })}</h3>
-          <table><thead><tr><th>{t(`dash.by.${groupBy}`)}</th><th>{t("dash.sessions")}</th><th>{t("dash.duration")}</th><th>Other</th><th>Repeat</th></tr></thead>
+          <div className="table-scroll"><table><thead><tr><th>{t(`dash.by.${groupBy}`)}</th><th>{t("dash.sessions")}</th><th>{t("dash.duration")}</th><th>{t("dash.other_short")}</th><th>{t("dash.acc.cause_first")}</th><th>{t("dash.acc.top3")}</th><th>{t("dash.acc.summary")}</th><th>{t("col.repeat")}</th></tr></thead>
             <tbody>{Object.entries(summary.groups).map(([k, g]: [string, any]) => (
-              <tr key={k}><td>{k}</td><td>{g.sessions} ({g.saved} saved)</td><td>{g.mean_duration ?? "–"} ({t("dash.n", { n: g.n_duration })})</td><td>{formatRate(g.other_share)}</td><td>{formatRate(g.repeat_rate)}</td></tr>
-            ))}</tbody></table>
+              <tr key={k}><td>{groupLabel(k)}</td><td>{g.sessions} ({g.saved} saved)</td><td>{g.mean_duration ?? "–"} ({t("dash.n", { n: g.n_duration })})</td><td>{formatRate(g.other_share)}</td>
+                <td>{formatRate(g.acceptance?.cause_first)}</td><td>{formatRate(g.acceptance?.top3)}</td><td>{formatRate(g.acceptance?.summary_kept)}</td><td>{formatRate(g.repeat_rate)}</td></tr>
+            ))}</tbody></table></div>
         </article>
       )}
       {people?.employees?.length > 0 && (
@@ -364,6 +366,14 @@ function Dashboard() {
         <article className="card">
           <h3>{t("dash.rates")}</h3>
           {rates.map(([label, rate]) => <Bar key={label} label={label} rate={rate as any} />)}
+        </article>
+        <article className="card" aria-label={t("dash.acc.title")}>
+          <h3>{t("dash.acc.title")}</h3>
+          <p className="muted">{t("dash.acc.note")}</p>
+          <Bar label={t("dash.acc.cause_first")} rate={summary.acceptance?.cause_first} />
+          <Bar label={t("dash.acc.top3")} rate={summary.acceptance?.top3} />
+          <Bar label={t("dash.acc.summary")} rate={summary.acceptance?.summary_kept} />
+          <Bar label={t("dash.acc.type")} rate={summary.acceptance?.type_kept} />
         </article>
         <article className="card">
           <h3>{t("dash.causes")}</h3>

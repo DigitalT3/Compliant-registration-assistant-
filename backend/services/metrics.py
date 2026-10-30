@@ -1,8 +1,8 @@
 """Dashboard metrics computed ONLY from recorded data, each with its sample size (FR-15, FR-17).
 
-Definitions: duration = wall-clock seconds from server session start to save
-(includes idle time within the session; sessions idle past the abandon limit are
-'abandoned' and excluded from the duration metric). Baseline comparison is
+Definitions: duration = the registration's time per step added up (server timestamps, from the form opening to the save,
+each visit to a step counted at most ``metrics.step_idle_cap_seconds``): the same total as the Audit Trail and the clock on the
+screen. Sessions that were not saved are excluded from the duration metric. Baseline comparison is
 reported only when ``baseline.current_process_seconds`` is configured.
 """
 import json
@@ -14,7 +14,10 @@ from ..settings import get_config
 from . import sessions as sessions_svc
 
 DEFINITIONS = {
-    "duration": "Server-recorded seconds from session start to save, saved sessions only; includes idle time.",
+    "duration": "Server-recorded seconds from the form opening to the save, saved sessions only: the time per step added up, each visit to a step counting at most the idle cap.",
+    "cause_first": "Share of registrations where the assistant suggested causes and the saved cause is its first suggestion (n = registrations with a suggestion).",
+    "summary_kept": "Share of registrations where the assistant's summary was saved as written (n = registrations with a suggested summary).",
+    "type_kept": "Share of registrations where the suggested complaint type was kept (n = registrations with a suggested type).",
     "top_three_rate": "Share of saved complaints whose final cause was among AI candidates shown (n = sessions with candidates).",
     "first_field_seconds": "Seconds from the form opening (when the search started) to the first field filled: by the customer lookup or by the employee. Median over sessions that have one.",
     "first_entry_seconds": "Seconds from the form opening to the first field the employee entered or changed themselves (origin manual or edited).",
@@ -45,16 +48,31 @@ def _where(f: dict):
 
 def _rows(conn, f):
     w, a = _where(f)
-    return [dict(r) for r in conn.execute(
+    rows = [dict(r) for r in conn.execute(
         "SELECT s.id,s.actor,s.started,s.ended,s.status,s.scenario,s.user_group,s.failure_status,s.mode,s.participant_id,"
         "c.id complaint_id,c.root_cause,c.complaint_type,c.repeat_detected,c.other_reason "
         f"FROM sessions s LEFT JOIN complaints c ON c.session_id=s.id WHERE {w} ORDER BY s.started DESC", a)]
+    done = [r for r in rows if r["status"] == "saved" and r["ended"]]
+    steps: dict = {}
+    if done:                                           # one query for all saved sessions: the time per step, added up
+        ph = ",".join("?" * len(done))
+        for e in conn.execute(f"SELECT session_id,step,event_type,at FROM step_events WHERE session_id IN ({ph}) ORDER BY id", [r["id"] for r in done]):
+            steps.setdefault(e["session_id"], []).append(dict(e))
+    for r in rows:
+        r["capped_seconds"] = None
+        if r in done:
+            per_step = sessions_svc.step_durations(steps.get(r["id"], []), r["ended"])
+            r["capped_seconds"] = round(sum(per_step.values()), 3) if per_step else None
+    return rows
 
 
 def _duration(r) -> float | None:
+    """Seconds from the form opening to the save: the time per step added up (the idle cap applies per visit)."""
     if r["status"] != "saved" or not r["ended"]:
         return None
-    from datetime import datetime
+    if r.get("capped_seconds") is not None:
+        return r["capped_seconds"]
+    from datetime import datetime                      # no step events recorded: fall back to the wall clock
     return (datetime.fromisoformat(r["ended"]) - datetime.fromisoformat(r["started"])).total_seconds()
 
 
@@ -81,6 +99,23 @@ def _spread(values) -> dict:
     values = [v for v in values if v is not None]
     return {"mean": round(statistics.mean(values), 2) if values else None,
             "median": round(statistics.median(values), 2) if values else None, "n": len(values)}
+
+
+def _acceptance(conn, saved: list) -> dict:
+    """How much of what the assistant suggested was kept, for the saved registrations in ``saved``."""
+    ids = [r["id"] for r in saved]
+    if not ids:
+        return {k: {"value": None, "n": 0} for k in ("cause_first", "top3", "summary_kept", "type_kept")}
+    ph = ",".join("?" * len(ids))
+    fin: dict = {}
+    for r in conn.execute(f"SELECT session_id,field,origin FROM field_events WHERE event_type='final' AND field IN ('root_cause','summary','complaint_type') AND session_id IN ({ph})", ids):
+        fin[(r["session_id"], r["field"])] = r["origin"]
+    top3 = [r[0] for r in conn.execute(f"SELECT in_top3 FROM ai_events WHERE operation='classification_outcome' AND in_top3 IS NOT NULL AND session_id IN ({ph})", ids)]
+
+    def kept(field):                                    # origin suggested = kept as suggested, edited = changed; anything else had no suggestion
+        o = [fin[(i, field)] for i in ids if fin.get((i, field)) in ("suggested", "edited")]
+        return _rate(sum(x == "suggested" for x in o), len(o))
+    return {"cause_first": kept("root_cause"), "top3": _rate(sum(top3), len(top3)), "summary_kept": kept("summary"), "type_kept": kept("complaint_type")}
 
 
 # PUBLIC_INTERFACE
@@ -128,6 +163,7 @@ def summary(conn, f: dict) -> dict:
                      "edited_after_prefill": _rate(fe["edited"], fe["prefilled"] + fe["edited"])}
     oc = [r for r in conn.execute(f"SELECT in_top3 FROM ai_events WHERE operation='classification_outcome' "
                                   f"AND in_top3 IS NOT NULL AND session_id IN ({ph})", ids)]
+    out["acceptance"] = _acceptance(conn, saved)
     out["classification"] = {"top_three_rate": _rate(sum(r[0] for r in oc), len(oc)),
                              "other_share": _rate(sum(r["root_cause"] == "other" for r in saved), len(saved)),
                              "by_root_cause": dict(Counter(r["root_cause"] for r in saved)),
@@ -150,7 +186,8 @@ def summary(conn, f: dict) -> dict:
         out["groups"] = {k: {"sessions": g["n"], "saved": g["saved"],
                              "mean_duration": g["durs"] and round(statistics.mean(g["durs"]), 2) or None,
                              "n_duration": len(g["durs"]), "other_share": _rate(g["other"], g["saved"]),
-                             "repeat_rate": _rate(g["repeat"], g["saved"])} for k, g in groups.items()}
+                             "repeat_rate": _rate(g["repeat"], g["saved"]),
+                             "acceptance": _acceptance(conn, [r for r in saved if (r[key] or "none") == k])} for k, g in groups.items()}
     out["targets"] = targets(conn, out)
     return out
 

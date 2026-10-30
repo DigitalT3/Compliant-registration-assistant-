@@ -26,7 +26,7 @@ def test_the_guard_catches_each_way_in(tmp_path, monkeypatch):
     (tmp_path / "backend" / "sneaky.py").write_text('import requests\nimport os\nURL = "https://acme.my.salesforce.com/services"\nTOKEN = os.environ.get("SALESFORCE_TOKEN")\n')
     (tmp_path / "config.json").write_text('{"note": "writes to the CRM"}')
     (tmp_path / ".env.example").write_text("COMPLAINT_SYSTEM_PASSWORD=x\n")
-    (tmp_path / "leak.txt").write_text("key AKIAABCDEFGHIJKLMNOP\n")
+    (tmp_path / "leak.txt").write_text("key " + "AKIA" + "ABCDEFGHIJKLMNOP" + "\n")      # assembled here so no real-looking key sits in this file
     for cmd in (["git", "init", "-q"], ["git", "add", "-A"]):
         subprocess.run(cmd, cwd=tmp_path, check=True)
     monkeypatch.setattr(guard, "ROOT", tmp_path)
