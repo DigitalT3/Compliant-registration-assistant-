@@ -147,6 +147,10 @@ From a laptop each database call takes about 180 ms, which inflates timed sessio
 
 The dashboard has a **By employee** table (and `employees.csv`): per person the saved and started registrations, the median time with its spread, how often the assistant's summary and cause were kept unchanged, the top-3 share, the "Other" share, the prefill rate and the repeat decisions, next to a "Whole team" row. A team lead sees only the people of their own team; admins and evaluators see every team. A share that rests on fewer than 3 registrations is hidden (`report.per_employee_min_n`), so nobody is judged on one or two cases. The view works with real accounts and real sign-in; people appear under the name of their account.
 
+## Audit Trail
+
+Administrators (and the governance role) have an **Audit Trail** page in the left menu, directly under History. It lists every saved record: the PoC's own registrations first, then the synthetic history, with a search on record id, customer name or number and a CSV export in the target field structure. Opening a record shows it in the target field structure (names are placeholders), where each field came from (prefilled, default, suggested, typed, edited), the repeat check with the earlier complaints and decisions, and the audit-log events about it. Other roles do not see the page and get 403 from its endpoints.
+
 ## Rule sign-off and the go/no-go readout
 
 **Repeat rule (rule owner).** Accounts with the role `rule_owner` (Juul at Renewi) can edit the repeat rule and **sign it off** or **request changes** on the Configuration page, next to the employees' disputes. A sign-off belongs to the exact rule parameters (lookback, match keys, cause mode, statuses, missing values): editing the rule makes it a draft again and earlier sign-offs stay as history. Once signed off, the note on the Check and save step says who signed it off and when, instead of "provisional". Administrators can still edit but cannot sign off for the owner. Audit actions: `repeat_rule_signed_off`, `repeat_rule_changes_requested`.

@@ -80,3 +80,9 @@ Added rows carry `source='poc_added'`, `created_by` and `created_at`, and an aud
 - `POST /api/repeat-disputes` records a later decision. Only the person who registered the complaint (or an administrator) can decide, and only about a linked earlier complaint.
 - `GET /api/repeat-disputes` lists decisions with who, when, both complaints, the reason, the rule version and the original evidence. `GET /api/export/disputes.csv` (analytics permission; the rule owner has it) exports the same for review.
 - `python -m scripts.repeat_check --url ... --email ... [--save]` checks the eleven seeded scenarios and the decision round trip with a real account.
+
+## Target field structure (FR-14)
+`GET /api/field-mapping` returns the provisional mapping (23 mapped fields, 7 columns excluded with a reason, `one_to_one`, `validated: false`). `GET /api/complaints/{id}/target` returns a saved complaint with the target field names in the order of the field list, and `missing_required`. See `docs/FIELD_MAPPING.md`. `python -m scripts.requirements_check ... --save` checks it with a real account.
+
+## Audit Trail (administrators and governance, `audit` permission)
+`GET /api/audit/records?q=&include_seed=&page=&page_size=` lists every saved record: the PoC's own registrations newest first, then the synthetic history; `q` matches the record id, customer name or number. `GET /api/audit/records/{id}` returns one record in the target field structure, where each field came from (the field log written at save), the repeat check with the linked earlier complaints and the decisions on them, and the audit-log events about it. `GET /api/export/records.csv?include_seed=` exports the records with the target field names as columns; every export is written to the audit log (`records_exported`). In the app: the **Audit Trail** item in the left menu, directly under History.

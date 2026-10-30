@@ -181,3 +181,12 @@ button.link:hover:not(:disabled) { background: none; }
 .row.needs-input select { border-color: #176d52; box-shadow: 0 0 0 2px #cfe9dc; }
 .hint-row { margin: -.25rem 0 .5rem; color: #52645c; font-size: .9rem; }
 .team-row td { background: #eff5f1; }
+
+/* Audit Trail */
+.audit-detail { display: grid; gap: .75rem; padding: .5rem 0; }
+.audit-detail table { font-size: .9rem; }
+.audit-detail code { font-size: .8rem; }
+.origins { list-style: none; padding: 0; display: flex; flex-wrap: wrap; gap: .4rem .9rem; }
+.table-scroll { overflow-x: auto; }
+.audit-panel { margin-top: 1rem; padding-top: .5rem; border-top: 2px solid #1f6b4a; }
+.audit-panel h3 { display: flex; align-items: center; gap: .75rem; }

@@ -1088,3 +1088,42 @@ test("T57 FR-13: the rule owner reviews who disputed which repeat link and why",
   await expect(card.getByRole("row", { name: /COM-SEED-6/ }).first()).toContainText("Confirm repeat");
   await expect(card.getByRole("button", { name: "Export disputes CSV" })).toBeVisible();
 });
+
+test("T58 Audit Trail: the administrator sees every saved record and how it was made; other roles do not see the page", async ({ page, request }) => {
+  const emp = { "X-Demo-User": "demo.emp.a1" };
+  const sid = (await (await request.post(`${API}/api/sessions`, { headers: emp, data: { mode: "assistant" } })).json()).session_id;
+  const saved = await (await request.post(`${API}/api/complaints`, { headers: emp, data: {
+    customer_id: "C008", site_id: "C008-S1", channel: "phone", complaint_type: "service", root_cause: "missed", description: "Audit trail test: container missed.",
+    session_id: sid, field_provenance: { customer_id: "prefilled", channel: "default", description: "manual", root_cause: "suggested" } } })).json();
+
+  await openApp(page, "demo.emp.a1");                                                                 // an employee has no Audit Trail
+  await expect(page.getByRole("button", { name: "Audit Trail" })).toHaveCount(0);
+  await openApp(page, "demo.evaluator");
+  await expect(page.getByRole("button", { name: "Audit Trail" })).toHaveCount(0);
+
+  await openApp(page, "demo.admin");
+  const menu = await page.locator("nav.sidebar button").allInnerTexts();
+  expect(menu.indexOf("Audit Trail")).toBe(menu.indexOf("History") + 1);                              // right below History
+  await page.getByRole("button", { name: "Audit Trail" }).click();
+  await expect(page.getByRole("heading", { name: "Audit Trail" })).toBeVisible();
+  await expect(page.getByRole("status")).toContainText(/\d+ saved records/);
+  const first = page.locator("tbody tr").first();
+  await expect(first).toContainText(saved.id);                                                         // the newest registration comes first
+  await expect(first).toContainText("Registered");
+  await expect(page.locator("tbody").getByText("Synthetic history").first()).toBeVisible();            // the seeded history is there too
+
+  await first.getByRole("button", { name: saved.id }).click();                                         // open it
+  const detail = page.locator(".audit-detail");
+  await expect(detail.getByText("PROVISIONAL_ComplaintId")).toBeVisible();
+  await expect(detail.getByText("Audit trail test: container missed.")).toBeVisible();
+  await expect(detail.getByText("Every required field is filled.")).toBeVisible();
+  await expect(detail.locator(".origins li", { hasText: "Channel" })).toContainText("Default");        // how each field was filled
+  await expect(detail.locator(".origins li", { hasText: "Description" })).toContainText("Typed");
+  await expect(detail.getByText("Record saved")).toBeVisible();                                        // the audit-log events about it
+  await expect(detail.getByText("Repeat rule applied")).toBeVisible();
+
+  await page.getByLabel("Record, customer name or number").fill(saved.id);                             // search
+  await page.getByRole("button", { name: "Search" }).click();
+  await expect(page.getByRole("status")).toContainText("1 saved records");
+  await expect(page.getByRole("button", { name: "Export records CSV" })).toBeVisible();
+});

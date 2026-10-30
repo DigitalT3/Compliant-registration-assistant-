@@ -6,12 +6,13 @@ import AuthScreen, { ChangePassword, Me } from "./features/auth/Auth";
 import Users from "./features/users/Users";
 import CustomerDataPage, { Section } from "./features/customerdata/CustomerDataPage";
 import CustomersPage from "./features/customerdata/CustomersPage";
+import AuditTrail from "./features/audit/AuditTrail";
 
-type Page = "register" | "history" | "customers" | Section | "dashboard" | "readout" | "rootcauses" | "evaluation" | "config" | "users" | "about";
+type Page = "register" | "history" | "audit" | "customers" | Section | "dashboard" | "readout" | "rootcauses" | "evaluation" | "config" | "users" | "about";
 
 /** Menu items and the permission each needs; items a role cannot use are not shown (the backend still enforces it). */
 const NAV: [Page, string | null][] = [
-  ["register", "register"], ["history", "read"], ["customers", "customer_data"], ["sites", "customer_data"], ["contracts", "customer_data"], ["orders", "customer_data"], ["containers", "customer_data"], ["dashboard", "analytics"], ["readout", "readout"], ["rootcauses", "read"],
+  ["register", "register"], ["history", "read"], ["audit", "audit"], ["customers", "customer_data"], ["sites", "customer_data"], ["contracts", "customer_data"], ["orders", "customer_data"], ["containers", "customer_data"], ["dashboard", "analytics"], ["readout", "readout"], ["rootcauses", "read"],
   ["evaluation", "evaluate"], ["config", "edit_rule"], ["users", "users"], ["about", null],
 ];
 
@@ -19,7 +20,7 @@ const DATA_PAGES: Page[] = ["sites", "contracts", "orders", "containers"];
 
 /** The first screen each role needs. */
 const LANDING: Record<string, Page> = {
-  employee: "register", lead: "dashboard", evaluator: "evaluation", admin: "users", governance: "history", viewer: "history", rule_owner: "config", business_owner: "readout",
+  employee: "register", lead: "dashboard", evaluator: "evaluation", admin: "users", governance: "audit", viewer: "history", rule_owner: "config", business_owner: "readout",
 };
 
 function ErrorMessage({ error }: { error: string | null }) {
@@ -143,6 +144,7 @@ function AppShell() {
           {current === "customers" && <CustomersPage onOpen={() => setPage("sites")} />}
           {DATA_PAGES.includes(current as Section) && <CustomerDataPage section={current as Section} onBack={() => setPage("register")} />}
           {current === "history" && <History config={config} />}
+          {current === "audit" && <AuditTrail config={config} />}
           {current === "dashboard" && <Dashboard />}
           {current === "rootcauses" && <RootCauses config={config} canReview={me.permissions.includes("review_taxonomy")} onReviewed={(review: any) => setConfig({ ...config, review })} />}
           {current === "readout" && <Readout canDecide={me.permissions.includes("decide")} />}

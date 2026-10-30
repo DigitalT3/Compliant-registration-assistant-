@@ -12,6 +12,7 @@ from ..errors import ApiError
 from ..settings import causes_by_id, get_config
 from . import accounts as accounts_svc
 from . import disputes as disputes_svc
+from . import field_mapping as field_mapping_svc
 from . import prefill as prefill_svc
 from . import repeat as repeat_svc
 from . import sessions as sessions_svc
@@ -179,6 +180,9 @@ def create(conn, p: dict, user: dict) -> dict:
             "response_target_days": extra["response_target_days"], "container": extra["container"],
             "root_cause_category": causes_by_id(cfg)[p["root_cause"]]["level1"],
         }
+        absent = field_mapping_svc.missing_required(field_mapping_svc.to_target(row))     # FR-14: the record must fill every required target field
+        if absent:
+            raise RuntimeError(f"record would miss required target fields: {absent}")
         conn.execute(f"INSERT INTO complaints({','.join(row)}) VALUES({','.join('?' * len(row))})", list(row.values()))
         _record_final_provenance(conn, session, p, cfg)
         _insert_repeat_check(conn, p.get("session_id"), cid, result)

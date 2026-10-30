@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 
 from ..auth import require
 from ..dbutil import connection
+from ..services import field_mapping as field_mapping_svc
 from ..services import ai, complaints, lookup
 from ..settings import get_config
 
@@ -220,6 +221,24 @@ def list_(customer_id: str | None = None, customer_number: str | None = None, co
          "repeat": repeat, "include_seed": include_seed}
     with connection() as conn:
         return complaints.list_complaints(conn, f, page, page_size)
+
+
+@router.get("/api/field-mapping", summary="The provisional mapping of PoC fields to the target complaint-system fields")
+def field_mapping(user: dict = Depends(require("read"))):
+    """The field list (target names are placeholders), the columns deliberately left out, and whether it is one-to-one over what is stored."""
+    mapping = field_mapping_svc.load()
+    with connection() as conn:
+        row = conn.execute("SELECT * FROM complaints LIMIT 1").fetchone()
+    problems = field_mapping_svc.check(list(dict(row).keys()), mapping) if row else None
+    return {**mapping, "one_to_one": None if problems is None else not problems, "problems": problems or []}
+
+
+@router.get("/api/complaints/{complaint_id}/target", summary="A saved complaint in the target field structure")
+def get_target(complaint_id: str, user: dict = Depends(require("read"))):
+    """The record with the target field names, in the order of the field list, plus any required target field that is empty."""
+    with connection() as conn:
+        target = field_mapping_svc.to_target(complaints.get(conn, complaint_id))
+    return {"record": target, "missing_required": field_mapping_svc.missing_required(target), "validated": field_mapping_svc.load()["validated"]}
 
 
 @router.get("/api/complaints/{complaint_id}", summary="Complaint detail")

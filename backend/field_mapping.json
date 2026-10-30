@@ -1,19 +1,39 @@
 {
   "label": "PROVISIONAL one-to-one mapping from PoC fields to target complaint-system fields. NOT validated against Salesforce or any production system. Target names are placeholders pending the complaint-system owner's field list.",
   "validated": false,
+  "version": "provisional-mapping-v2",
   "fields": [
+    {"poc_field": "id", "target_field": "PROVISIONAL_ComplaintId", "required": true, "note": "COM-nnnn in the PoC."},
     {"poc_field": "customer_id", "target_field": "PROVISIONAL_Account", "required": false, "note": "May be blank when no match is found."},
     {"poc_field": "site_id", "target_field": "PROVISIONAL_Site", "required": false, "note": ""},
     {"poc_field": "contract_id", "target_field": "PROVISIONAL_Contract", "required": false, "note": ""},
     {"poc_field": "order_id", "target_field": "PROVISIONAL_Order", "required": false, "note": ""},
+    {"poc_field": "container", "target_field": "PROVISIONAL_Container", "required": false, "note": "Read from the order, never typed."},
     {"poc_field": "channel", "target_field": "PROVISIONAL_Channel", "required": true, "note": "Mandatory assumption unconfirmed."},
     {"poc_field": "registration_date", "target_field": "PROVISIONAL_RegistrationDate", "required": true, "note": ""},
-    {"poc_field": "registering_user", "target_field": "PROVISIONAL_RegisteredBy", "required": true, "note": "Demo user in the PoC."},
+    {"poc_field": "registering_user", "target_field": "PROVISIONAL_RegisteredBy", "required": true, "note": "A real account in the PoC (demo account only in demo mode)."},
+    {"poc_field": "status", "target_field": "PROVISIONAL_Status", "required": true, "note": "Default per type; 'open' unless the type says otherwise."},
+    {"poc_field": "priority", "target_field": "PROVISIONAL_Priority", "required": false, "note": "Default per type."},
+    {"poc_field": "owner_team", "target_field": "PROVISIONAL_OwnerTeam", "required": false, "note": "Default per type."},
+    {"poc_field": "response_target_days", "target_field": "PROVISIONAL_ResponseTargetDays", "required": false, "note": "Default per type."},
     {"poc_field": "original_text", "target_field": "PROVISIONAL_Description", "required": true, "note": "Preserved exactly as entered."},
-    {"poc_field": "summary_json", "target_field": "PROVISIONAL_StructuredSummary", "required": false, "note": ""},
+    {"poc_field": "language", "target_field": "PROVISIONAL_Language", "required": false, "note": "nl or en."},
+    {"poc_field": "summary_json", "target_field": "PROVISIONAL_StructuredSummary", "required": false, "note": "What, where, when, impact + the type's own fields."},
     {"poc_field": "complaint_type", "target_field": "PROVISIONAL_Type", "required": true, "note": ""},
     {"poc_field": "root_cause", "target_field": "PROVISIONAL_RootCause", "required": true, "note": "Provisional taxonomy."},
+    {"poc_field": "root_cause_category", "target_field": "PROVISIONAL_RootCauseCategory", "required": false, "note": "Derived from the cause (level 1 of the two-level list)."},
     {"poc_field": "other_reason", "target_field": "PROVISIONAL_OtherReason", "required": false, "note": "Required when root_cause is other."},
-    {"poc_field": "repeat_detected", "target_field": "PROVISIONAL_RepeatFlag", "required": false, "note": "Deterministic rule result."}
-  ]
+    {"poc_field": "repeat_detected", "target_field": "PROVISIONAL_RepeatFlag", "required": false, "note": "Deterministic rule result."},
+    {"poc_field": "rule_version", "target_field": "PROVISIONAL_RepeatRuleVersion", "required": false, "note": "Which repeat rule produced the flag."},
+    {"poc_field": "taxonomy_version", "target_field": "PROVISIONAL_TaxonomyVersion", "required": false, "note": "Which cause list the cause comes from."}
+  ],
+  "not_mapped": {
+    "created": "Technical timestamp used by the repeat rule; the registration date is the business date.",
+    "session_id": "Link to the test session log (timing, field origins); not a complaint field.",
+    "payload": "JSON copy of description, type and reason kept for the PoC; the fields above hold the same values.",
+    "summary_meta": "Whether the summary came from the mock model; test bookkeeping.",
+    "scenario": "Scripted test scenario tag; test bookkeeping.",
+    "is_poc": "Marks the record as made by the PoC; never leaves it.",
+    "is_seed": "Marks synthetic history; never leaves the PoC."
+  }
 }

@@ -1,4 +1,4 @@
-"""Check FR-01 to FR-08 against a RUNNING app with a real account (no demo header), each at its acceptance criterion.
+"""Check FR-01 to FR-08 and FR-14 against a RUNNING app with a real account (no demo header), each at its acceptance criterion.
 
     python -m scripts.requirements_check --url http://127.0.0.1:8001 --email you@example.nl      # asks for the password (hidden)
     python -m scripts.requirements_check --url ... --email ... --save                            # also saves test complaints (FR-04 edits, FR-07 texts)
@@ -189,6 +189,39 @@ def fr08(api, rater):
            f"{len(items)} complaints to rate; empty rating refused ({no_vote.get('_status')}); no rating was written")
 
 
+def fr14(api, me, save):
+    mapping, _ = api.call("GET", "/api/field-mapping")
+    names = [f["target_field"] for f in mapping.get("fields", [])]
+    listing, _ = api.call("GET", "/api/complaints", params={"page_size": 100, "include_seed": "true"})
+    ids = [c["id"] for c in listing.get("items", [])]
+    short = []
+    for cid in ids:
+        t, _ = api.call("GET", f"/api/complaints/{cid}/target")
+        if list(t.get("record", {})) != names or t.get("missing_required"):
+            short.append(cid)
+    report("FR-14", "the field list is one-to-one with what is stored", mapping.get("one_to_one") is True and not mapping.get("problems"),
+           f"{len(names)} target fields + {len(mapping.get('not_mapped', {}))} columns excluded with a reason = {len(names) + len(mapping.get('not_mapped', {}))} stored columns; validated against the complaint system: {mapping.get('validated')}")
+    report("FR-14", "every complaint maps to exactly those fields with the required ones filled", not short,
+           f"{len(ids) - len(short)} of {len(ids)} complaints" + (f"; not: {short[:5]}" if short else ""))
+    if not save:
+        print("  [skip] FR-14 saved values arrive as entered: run with --save (saves 1 test complaint)")
+        return
+    card = api.call("GET", "/api/customers/search", params={"q": "100009"})[0]["candidates"][0]
+    text = "Café 'De Ruiter' – €45,50 te veel gefactureerd.\r\nTweede regel  "
+    saved, _ = api.call("POST", "/api/complaints", {"customer_id": card["customer_id"], "site_id": "C009-S1", "contract_id": "C009-K1", "order_id": "C009-O10",
+                        "channel": "email", "complaint_type": "billing", "root_cause": "other", "other_reason": "Seagull nest under the lid",
+                        "language": "nl", "priority": "high", "description": text})
+    t, _ = api.call("GET", f"/api/complaints/{saved.get('id')}/target") if saved.get("id") else ({}, 0)
+    r = t.get("record", {})
+    want = {"PROVISIONAL_ComplaintId": saved.get("id"), "PROVISIONAL_Account": card["customer_id"], "PROVISIONAL_Site": "C009-S1", "PROVISIONAL_Contract": "C009-K1",
+            "PROVISIONAL_Order": "C009-O10", "PROVISIONAL_Container": "BOX-009-1", "PROVISIONAL_Channel": "email", "PROVISIONAL_RegisteredBy": me["id"],
+            "PROVISIONAL_Status": "open", "PROVISIONAL_Priority": "high", "PROVISIONAL_Description": text, "PROVISIONAL_Language": "nl",
+            "PROVISIONAL_Type": "billing", "PROVISIONAL_RootCause": "other", "PROVISIONAL_OtherReason": "Seagull nest under the lid"}
+    wrong = [k for k, v in want.items() if r.get(k) != v]
+    report("FR-14", "a saved record arrives in the target fields exactly as entered", not wrong and not t.get("missing_required") and list(r) == names,
+           f"{saved.get('id')}: {len(want)} values compared" + (f"; differing: {wrong}" if wrong else ", all identical"))
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--url", default="http://127.0.0.1:8001")
@@ -226,7 +259,7 @@ def main() -> int:
             return 2
         rater.token = rl["token"]
     fr01(api, customers); fr02(api); fr03(api, customers); fr04(api, customers, me, a.save); fr05(api, customers)
-    fr07(api, me, a.save); fr08(api, rater)
+    fr07(api, me, a.save); fr08(api, rater); fr14(api, me, a.save)
     failed = [fr for fr, ok in RESULTS if not ok]
     print("\n" + ("All checks pass." if not failed else f"Failing: {sorted(set(failed))}"))
     return 1 if failed else 0
