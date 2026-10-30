@@ -349,10 +349,16 @@ def run(conn, op: str, payload: dict, session_id: str | None, actor: str) -> dic
     ms = int((time.monotonic() - start) * 1000)
     cls_out = result if op == "classify" else getattr(result, "classification", None)
     cands = json.dumps([c.model_dump() for c in cls_out.candidates]) if result and cls_out is not None else None
+    summ_out = result if op == "summarise" else getattr(result, "summary", None)
+    shown = {}                       # what the employee was shown, kept so "accepted or changed" can be audited later
+    if result and cls_out is not None and cls_out.complaint_type:
+        shown["complaint_type"] = cls_out.complaint_type
+    if result and summ_out is not None:
+        shown["summary"] = summ_out.model_dump()
     conn.execute("INSERT INTO ai_events(session_id,operation,provider,model,prompt_version,candidates,"
-                 "duration_ms,status,error_category,at) VALUES(?,?,?,?,?,?,?,?,?,?)",
+                 "duration_ms,status,error_category,at,detail) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
                  (session_id, op, provider.name, provider.model, PROMPT_VERSION, cands, ms,
-                  "failed" if category else "ok", category, db.now()))
+                  "failed" if category else "ok", category, db.now(), json.dumps(shown) if shown else None))
     if category:
         audit(conn, actor, "ai_operation_failed", {"operation": op, "category": category, "session_id": session_id})
         conn.commit()

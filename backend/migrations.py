@@ -164,8 +164,13 @@ def _migrate_v9(db) -> None:
     _add_column(db, "customers", "created_by", "TEXT")
 
 
+def _migrate_v10(db) -> None:
+    """The log keeps what the assistant suggested (type and summary), so accepted or changed can be audited later."""
+    _add_column(db, "ai_events", "detail", "TEXT")
+
+
 MIGRATIONS = {2: _migrate_v2, 3: _migrate_v3, 4: _migrate_v4, 5: _migrate_v5, 6: _migrate_v6, 7: _migrate_v7, 8: _migrate_v8,
-              9: _migrate_v9}
+              9: _migrate_v9, 10: _migrate_v10}
 
 
 # PUBLIC_INTERFACE

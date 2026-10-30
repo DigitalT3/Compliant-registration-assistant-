@@ -55,7 +55,7 @@ export default function AuditTrail({ config }: { config: any }) {
       <div className="table-scroll"><table>
         <thead><tr>
           <th>{t("audit.col.record")}</th><th>{t("f.registration_date")}</th><th>{t("f.customer_name")}</th><th>{t("f.site_id")}</th>
-          <th>{t("f.complaint_type")}</th><th>{t("col.cause")}</th><th>{t("f.channel")}</th><th>{t("f.status")}</th><th>{t("col.repeat")}</th><th>{t("f.registering_user")}</th>
+          <th>{t("f.complaint_type")}</th><th>{t("col.cause")}</th><th>{t("f.channel")}</th><th>{t("f.status")}</th><th>{t("col.repeat")}</th><th>{t("f.registering_user")}</th><th>{t("audit.col.log")}</th>
         </tr></thead>
         <tbody>
           {items.map((r) => (
@@ -74,6 +74,7 @@ export default function AuditTrail({ config }: { config: any }) {
                 <td>{r.status}</td>
                 <td>{r.repeat_detected === null ? "–" : r.repeat_detected ? t("yes") : t("no")}</td>
                 <td>{cell(r.registered_by)}</td>
+                <td>{r.log === "complete" ? <span className="badge prov-prefilled">{t("audit.log.complete")}</span> : r.log === "incomplete" ? <span className="badge prov-default">{t("audit.log.incomplete")}</span> : <span className="muted">–</span>}</td>
               </tr>
             </Fragment>
           ))}
@@ -85,6 +86,33 @@ export default function AuditTrail({ config }: { config: any }) {
           <h3>{open} <button className="secondary" onClick={() => { setOpen(null); setDetail(null); }}>{t("audit.close")}</button></h3>
 {!detail ? <p>{t("loading")}</p> : (
             <div className="audit-detail">
+              <article className="card" aria-label={t("audit.log.title")}>
+                <h3>{t("audit.log.title")} {detail.log.applicable && (detail.log.complete
+                  ? <span className="badge prov-prefilled">{t("audit.log.complete")}</span> : <span className="badge prov-default">{t("audit.log.incomplete")}</span>)}</h3>
+                {!detail.log.applicable ? <p className="empty">{t("audit.no_origins")}</p> : (<>
+                  {detail.log.missing.length > 0 && <p className="warn">{t("audit.log.missing")}: {detail.log.missing.join(", ")}</p>}
+                  <p className="muted">{t(`mode.${detail.log.mode}`)}{detail.log.participant && ` · ${detail.log.participant}`}{detail.log.scenario && ` · ${detail.log.scenario}`} · {String(detail.log.started || "").replace("T", " ").slice(0, 19)} → {String(detail.log.ended || "").replace("T", " ").slice(0, 19)} · {t("audit.log.total", { s: detail.log.total_seconds })}</p>
+                  <h4>{t("audit.log.steps")}</h4>
+                  <table><thead><tr><th>{t("audit.col.step")}</th><th>{t("audit.log.seconds")}</th><th>{t("audit.log.visits")}</th></tr></thead>
+                    <tbody>{detail.log.steps.map((st: any) => <tr key={st.step}><td>{t(`step.${st.step}`)}</td><td>{st.seconds}</td><td>{st.visits}</td></tr>)}</tbody></table>
+                  <h4>{t("audit.log.prefilled")}</h4>
+                  <p>{t("audit.log.prefilled_n", { p: detail.log.prefilled_at_start.prefilled, d: detail.log.prefilled_at_start.default })}</p>
+                  <p className="origins">{Object.entries(detail.log.fields_at_save).map(([o, n]: [string, any]) => <span key={o}><span className={`badge prov-${o}`}>{t(`prov.${o}`)}</span> {n}</span>)}</p>
+                  {detail.log.edits.length > 0 && <p>{t("audit.log.edits")}: {detail.log.edits.map((e: any) => `${field(e.field)} → ${t(`prov.${e.origin}`)}`).join(", ")}</p>}
+                  <h4>{t("audit.log.suggestions")}</h4>
+                  {detail.log.suggestions.causes.length === 0 ? <p className="empty">{t("audit.log.none")}</p> : (<>
+                    <p>{t("f.complaint_type")}: <b>{name(config.types, detail.log.suggestions.complaint_type)}</b></p>
+                    <table><thead><tr><th>{t("col.cause")}</th><th>%</th><th>{t("ds.reason")}</th></tr></thead>
+                      <tbody>{detail.log.suggestions.causes.map((c: any) => (
+                        <tr key={c.root_cause_id} className={c.root_cause_id === detail.log.suggestions.selected_cause ? "selected" : undefined}>
+                          <td>{name(config.root_causes, c.root_cause_id)}</td><td>{Math.round(c.confidence * 100)}</td><td>{c.reason}</td></tr>))}</tbody></table>
+                    <p>{t("audit.log.chosen")}: <b>{name(config.root_causes, detail.log.suggestions.selected_cause)}</b> — {t(`audit.cause.${detail.log.suggestions.cause_result}`)}</p>
+                  </>)}
+                  {detail.log.suggestions.summary_result && <p>{t("summary")}: {detail.log.suggestions.summary_result === "kept" ? t("audit.log.summary_kept")
+                    : t("audit.log.summary_changed", { f: detail.log.suggestions.summary_changed_fields.join(", ") })}</p>}
+                  {detail.log.suggestions.ai_calls.length > 0 && <p className="muted">{detail.log.suggestions.ai_calls.map((c: any) => `${c.operation} ${c.status} ${c.ms} ms`).join(" · ")}</p>}
+                </>)}
+              </article>
               <article className="card">
                 <h3>{t("audit.record")}</h3>
                 <p className="muted">{t("audit.record_note")}{detail.missing_required.length === 0 && ` ${t("audit.complete")}`}</p>

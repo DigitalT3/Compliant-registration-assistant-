@@ -15,7 +15,7 @@ def test_reset_is_deterministic(fresh_db):
     first = seed.fingerprint()
     seed.reset()
     assert seed.fingerprint() == first
-    assert first["user_version"] == 9
+    assert first["user_version"] == 10
 
 
 def test_dataset_minimums(fresh_db):

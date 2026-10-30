@@ -7,7 +7,9 @@ typed, edited), the repeat check with the earlier complaints and the decisions o
 import json
 
 from . import complaints, field_mapping
+from . import sessions as sessions_svc
 from .lookup import _like
+from ..settings import get_config
 
 
 # PUBLIC_INTERFACE
@@ -33,6 +35,10 @@ def records(conn, q: str | None, include_seed: bool, page: int, size: int) -> di
         d = dict(r)
         d["repeat_detected"] = None if d["repeat_detected"] is None else bool(d["repeat_detected"])
         items.append(d)
+    flags = log_flags(conn, [dict(r) for r in conn.execute(
+        f"SELECT id, is_seed, session_id, scenario FROM complaints WHERE id IN ({','.join('?' * len(items))})", [i['id'] for i in items])]) if items else {}
+    for d in items:
+        d["log"] = flags.get(d["id"], "n/a")
     return {"items": items, "total": total, "page": page, "page_size": size}
 
 
@@ -52,7 +58,8 @@ def detail(conn, complaint_id: str) -> dict:
         patterns)]
     return {"id": complaint_id, "is_seed": bool(rec.get("is_seed")), "record": target,
             "missing_required": field_mapping.missing_required(target), "validated": field_mapping.load()["validated"],
-            "origins": origins, "repeat_checks": rec.get("repeat_checks", []), "repeat_disputes": rec.get("repeat_disputes", []), "events": events}
+            "origins": origins, "repeat_checks": rec.get("repeat_checks", []), "repeat_disputes": rec.get("repeat_disputes", []), "events": events,
+            "log": registration_log(conn, rec)}
 
 
 # PUBLIC_INTERFACE
@@ -65,3 +72,155 @@ def export_rows(conn, include_seed: bool) -> tuple[list, list]:
         t = field_mapping.to_target(complaints._row(r))
         rows.append([json.dumps(v, ensure_ascii=False) if isinstance(v, (dict, list)) else v for v in t.values()])
     return header, rows
+
+
+SAMPLE_PREFIX = "rating-sample-"       # complaints saved by scripts.seed_rating_sample for the process owners to rate: not test registrations
+
+
+def _no_log_needed(scenario, is_seed) -> bool:
+    return bool(is_seed) or (scenario or "").startswith(SAMPLE_PREFIX)
+
+
+# ---- FR-15: the log of one registration ------------------------------------------------------------------------------
+
+def _missing(mode, status, steps, finals, prefills, ai, tracked) -> list:
+    """What the log of a saved registration lacks (empty = complete).
+
+    Needed for every registration: a session that ended saved; every step entered and completed; the origin of all tracked
+    fields at save; the fields filled before the employee touched them (prefilled or default). In assistant mode also the
+    suggestions shown (an AI call was logged) and the outcome of the cause (accepted or changed).
+    """
+    bad = []
+    if status != "saved":
+        bad.append("session_not_saved")
+    order = sessions_svc.STEPS
+    for i, step in enumerate(order):
+        moved_on = i + 1 < len(order) and steps.get((order[i + 1], "step_entered"))      # entering the next step closes this one
+        if not steps.get((step, "step_entered")):
+            bad.append(f"step_not_entered:{step}")
+        elif not steps.get((step, "step_completed")) and not moved_on:
+            bad.append(f"step_not_completed:{step}")
+    if finals < tracked:
+        bad.append(f"field_origins_at_save:{finals}_of_{tracked}")
+    if not prefills:
+        bad.append("prefill_not_logged")
+    if mode == "assistant":
+        if not (ai.get("classify") or ai.get("analyze")):
+            bad.append("suggestions_not_logged")
+        if not ai.get("classification_outcome"):
+            bad.append("outcome_not_logged")
+    return bad
+
+
+def _grouped(conn, sql: str, ids: list) -> list:
+    return conn.execute(sql.replace("{ids}", ",".join("?" * len(ids))), ids).fetchall()
+
+
+# PUBLIC_INTERFACE
+def log_flags(conn, rows: list) -> dict:
+    """``{complaint id: "complete" | "incomplete" | "n/a"}`` for a page of records, with a few queries for the whole page."""
+    out = {r["id"]: "n/a" for r in rows}
+    wanted = [r for r in rows if not _no_log_needed(r.get("scenario"), r["is_seed"])]
+    sids = [r["session_id"] for r in wanted if r["session_id"]]
+    for r in wanted:
+        if not r["session_id"]:
+            out[r["id"]] = "incomplete"
+    if not sids:
+        return out
+    tracked = len(get_config()["metrics"]["tracked_fields"])
+    sess = {r["id"]: r for r in _grouped(conn, "SELECT id, mode, status FROM sessions WHERE id IN ({ids})", sids)}
+    steps, finals, prefills, ai = {}, {}, {}, {}
+    for r in _grouped(conn, "SELECT session_id, step, event_type, count(*) AS n FROM step_events WHERE session_id IN ({ids}) GROUP BY session_id, step, event_type", sids):
+        key = sessions_svc.LEGACY_STEPS.get(r["step"], r["step"])
+        steps.setdefault(r["session_id"], {})[(key, r["event_type"])] = r["n"]
+    for r in _grouped(conn, "SELECT session_id, event_type, changed, count(*) AS n FROM field_events WHERE session_id IN ({ids}) GROUP BY session_id, event_type, changed", sids):
+        if r["event_type"] == "final":
+            finals[r["session_id"]] = finals.get(r["session_id"], 0) + r["n"]
+        elif r["event_type"] == "field" and not r["changed"]:
+            prefills[r["session_id"]] = prefills.get(r["session_id"], 0) + r["n"]
+    for r in _grouped(conn, "SELECT session_id, operation, count(*) AS n FROM ai_events WHERE session_id IN ({ids}) GROUP BY session_id, operation", sids):
+        ai.setdefault(r["session_id"], {})[r["operation"]] = r["n"]
+    for r in wanted:
+        sid, se = r["session_id"], sess.get(r["session_id"])
+        if sid and se:
+            bad = _missing(se["mode"], se["status"], steps.get(sid, {}), finals.get(sid, 0), prefills.get(sid, 0), ai.get(sid, {}), tracked)
+            out[r["id"]] = "incomplete" if bad else "complete"
+        elif sid:
+            out[r["id"]] = "incomplete"
+    return out
+
+
+def _result_of_cause(selected, shown):
+    if not shown:
+        return "no_suggestion"
+    if selected == shown[0]:
+        return "kept_first"
+    return "chose_other_of_three" if selected in shown else "chose_outside"
+
+
+# PUBLIC_INTERFACE
+def registration_log(conn, rec: dict) -> dict:
+    """Everything logged about one registration: time per step, what was prefilled, the suggestions shown, accepted or changed."""
+    if rec.get("is_seed"):
+        return {"applicable": False, "reason": "synthetic_history"}
+    if _no_log_needed(rec.get("scenario"), False):
+        return {"applicable": False, "reason": "rating_sample"}
+    sid = rec.get("session_id")
+    sess = sid and conn.execute("SELECT * FROM sessions WHERE id=?", (sid,)).fetchone()
+    if not sess:
+        return {"applicable": True, "complete": False, "missing": ["session"], "steps": [], "fields": {}, "suggestions": None}
+    sess = dict(sess)
+    events = [dict(r) for r in conn.execute("SELECT step, event_type, at FROM step_events WHERE session_id=? ORDER BY id", (sid,))]
+    seconds = sessions_svc.step_durations(events, sess.get("ended"))
+    counts = {}
+    for e in events:
+        key = (sessions_svc.LEGACY_STEPS.get(e["step"], e["step"]), e["event_type"])
+        counts[key] = counts.get(key, 0) + 1
+    fe = [dict(r) for r in conn.execute("SELECT field, origin, event_type, changed, at FROM field_events WHERE session_id=? ORDER BY id", (sid,))]
+    finals = [e for e in fe if e["event_type"] == "final"]
+    start = [e for e in fe if e["event_type"] == "field" and not e["changed"]]
+    edits = [{"field": e["field"], "origin": e["origin"], "at": e["at"]} for e in fe if e["event_type"] == "field" and e["changed"]]
+    ai_rows = [dict(r) for r in conn.execute("SELECT * FROM ai_events WHERE session_id=? ORDER BY id", (sid,))]
+    ai_ops = {}
+    for r in ai_rows:
+        ai_ops[r["operation"]] = ai_ops.get(r["operation"], 0) + 1
+    tracked = len(get_config()["metrics"]["tracked_fields"])
+    bad = _missing(sess["mode"], sess["status"], counts, len(finals), len(start), ai_ops, tracked)
+
+    def last(*ops):
+        return next((r for r in reversed(ai_rows) if r["operation"] in ops and r["status"] == "ok"), None)
+    cls, summ = last("classify", "analyze"), last("summarise", "analyze")
+    causes = json.loads(cls["candidates"] or "[]") if cls else []
+    detail = lambda r: json.loads(r["detail"]) if r and r.get("detail") else {}
+    outcome = next((r for r in reversed(ai_rows) if r["operation"] == "classification_outcome"), None)
+    selected = outcome["selected"] if outcome else rec.get("root_cause")
+    suggested = detail(summ).get("summary")
+    saved = rec.get("summary_json") or {}
+    changed = []
+    from_context = set(saved.get("context_extras") or [])            # filled from the chosen order after the model answered, not edited
+    if suggested is not None:
+        for k in ("what", "where", "when", "impact"):
+            if (suggested.get(k) or "").strip() != (saved.get(k) or "").strip():
+                changed.append(k)
+        for k in sorted((set(suggested.get("extras") or {}) | set(saved.get("extras") or {})) - from_context):
+            if ((suggested.get("extras") or {}).get(k) or "").strip() != ((saved.get("extras") or {}).get(k) or "").strip():
+                changed.append(k)
+    origins = {}
+    for e in finals:
+        origins[e["origin"]] = origins.get(e["origin"], 0) + 1
+    return {
+        "applicable": True, "complete": not bad, "missing": bad, "mode": sess["mode"], "participant": sess.get("participant_id"),
+        "scenario": sess.get("scenario"), "started": sess["started"], "ended": sess.get("ended"), "status": sess["status"],
+        "steps": [{"step": st, "seconds": seconds.get(st, 0), "visits": counts.get((st, "step_entered"), 0)} for st in sessions_svc.STEPS],
+        "total_seconds": round(sum(seconds.values()), 1),
+        "prefilled_at_start": {o: sum(1 for e in start if e["origin"] == o) for o in ("prefilled", "default")},
+        "fields_at_save": origins, "edits": edits,
+        "suggestions": {
+            "ai_calls": [{"operation": r["operation"], "status": r["status"], "error": r["error_category"], "ms": r["duration_ms"], "model": r["model"]}
+                         for r in ai_rows if r["operation"] != "classification_outcome"],
+            "complaint_type": detail(cls).get("complaint_type"), "causes": causes, "selected_cause": selected,
+            "cause_result": _result_of_cause(selected, [c["root_cause_id"] for c in causes]),
+            "in_top3": outcome["in_top3"] if outcome else None,
+            "summary_suggested": suggested, "summary_changed_fields": changed if suggested is not None else None,
+            "summary_result": None if suggested is None else ("changed" if changed else "kept")},
+    }

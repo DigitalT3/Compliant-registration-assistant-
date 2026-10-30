@@ -193,7 +193,9 @@ export default function Register({ onViewHistory, meName, config }: { onViewHist
     // The type sent above (chosen earlier, or guessed from the email) produced those defaults, so it has to stay with them.
     const kept = s.fields.complaint_type?.value ? { complaint_type: s.fields.complaint_type } : {};
     set({ sessionId: sid, customerId: c.customer_id, ctx, fields: { ...pf.fields, ...kept }, step: 1, search: null });
-    post(`/api/sessions/${sid}/events`, { type: "step_entered", step: "review_details" }).catch(() => undefined);
+    // The session starts here, so the first step is closed and the second opened in the order the log must show.
+    post(`/api/sessions/${sid}/events`, { type: "step_completed", step: "find_customer" })
+      .then(() => post(`/api/sessions/${sid}/events`, { type: "step_entered", step: "review_details" })).catch(() => undefined);
   });
 
   // Fields the user typed or edited survive a re-prefill; everything system-filled is recomputed.

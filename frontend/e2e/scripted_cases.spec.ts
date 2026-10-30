@@ -1127,3 +1127,59 @@ test("T58 Audit Trail: the administrator sees every saved record and how it was 
   await expect(page.getByRole("status")).toContainText("1 saved records");
   await expect(page.getByRole("button", { name: "Export records CSV" })).toBeVisible();
 });
+
+test("T59 FR-15: a registration made on the screen leaves a complete log: time per step, prefilled fields, suggestions shown, accepted or changed", async ({ page }) => {
+  await openApp(page);
+  await search(page, "100013");
+  await selectFirst(page);
+  await page.getByLabel("Channel").selectOption("email");                                             // a change during the registration
+  await describe(page, "The container at our depot was not emptied on Tuesday, it was missed again.", "en");
+  await page.getByLabel("Impact", { exact: true }).fill("Overflowing bin, customer upset");           // the assistant's summary, changed
+  await next(page);
+  await save(page).click();
+  await saved(page);
+  const id = (await page.getByRole("status").innerText()).match(/COM-\d+/)![0];
+
+  await openApp(page, "demo.admin");
+  await page.getByRole("button", { name: "Audit Trail" }).click();
+  await page.getByLabel("Record, customer name or number").fill(id);
+  await page.getByRole("button", { name: "Search" }).click();
+  await expect(page.locator("tbody tr").first()).toContainText("Log complete");                        // the list says so
+  await page.getByRole("button", { name: id }).click();
+  const log = page.getByLabel("Registration log");
+  await expect(log).toContainText("Log complete");
+  for (const step of ["Find customer", "Review details", "Describe complaint", "Classify", "Repeat check and save"])
+    await expect(log.getByRole("row", { name: new RegExp(`^${step}`) })).toBeVisible();               // time per step: all five
+  await expect(log).toContainText(/\d+ prefilled from the customer data and \d+ defaulted/);          // fields prefilled
+  await expect(log).toContainText("Channel → Edited");                                                 // changed during the registration
+  await expect(log.getByRole("heading", { name: "Suggestions shown" })).toBeVisible();                 // suggestions shown with their reasons
+  await expect(log.getByRole("row", { name: /Missed collection|Niet ingezameld|Missed/ }).first()).toBeVisible();
+  await expect(log).toContainText("kept the first suggestion");                                        // accepted
+  await expect(log).toContainText("the suggested summary was changed (impact)");                       // changed
+});
+
+test("T60 FR-15: a plain-form registration has a complete log too, without suggestions", async ({ page }) => {
+  await openApp(page);
+  await page.getByText("Test session (optional)").click();
+  await page.getByLabel(/^Mode/).selectOption("plain");
+  await search(page, "100013");
+  await selectFirst(page);
+  await page.getByLabel("Complaint type").selectOption("service");
+  await page.getByRole("button", { name: "Next", exact: true }).click();
+  await page.getByLabel("Complaint description").fill("Container not emptied (plain form).");
+  await next(page);
+  await page.getByRole("radio", { name: /Missed collection/ }).first().check();
+  await next(page);
+  await save(page).click();
+  await saved(page);
+  const id = (await page.getByRole("status").innerText()).match(/COM-\d+/)![0];
+  await openApp(page, "demo.admin");
+  await page.getByRole("button", { name: "Audit Trail" }).click();
+  await page.getByLabel("Record, customer name or number").fill(id);
+  await page.getByRole("button", { name: "Search" }).click();
+  await page.getByRole("button", { name: id }).click();
+  const log = page.getByLabel("Registration log");
+  await expect(log).toContainText("Log complete");
+  await expect(log).toContainText("Plain form");
+  await expect(log).toContainText("No suggestion was shown");
+});
