@@ -308,6 +308,7 @@ export const nl: Record<string, string> = {
   "about.prov.l": "Herhaaldefinitie, taxonomie, standaardwaarden en veldmapping zijn voorlopig en moeten door Renewi-eigenaren worden bevestigd. Alle data is synthetisch; er is geen koppeling met Renewi-systemen.",
   "loading": "Laden…",
   "error": "Fout",
+  "reg.stale": "Je eerdere registratie was niet meer beschikbaar, daarom is een nieuwe gestart. Zoek de klant opnieuw.",
   "yes": "Ja",
   "no": "Nee",
   "auth.title": "Inloggen",

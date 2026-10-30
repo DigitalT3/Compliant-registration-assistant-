@@ -1319,3 +1319,20 @@ test("T66 repeat override: a disputed link waits for the weekly review, the rule
   await expect(bar2).toContainText("Weekly review up to date");
   await expect(page.locator("tbody tr", { hasText: "different pickup" })).toContainText("Reviewed");
 });
+
+test("T67 a registration left over from before (its session gone from the server) does not break the next one or keep its old clock", async ({ page }) => {
+  await openApp(page);
+  await page.evaluate(() => sessionStorage.setItem("cra.register", JSON.stringify({ sessionId: "gone-session", openedAt: Date.now() - 3600_000, step: 0,
+    visits: [{ step: "find_customer", from: Date.now() - 3600_000, to: null }] })));
+  await page.getByRole("button", { name: "History" }).click();
+  await page.getByRole("button", { name: "Register" }).click();                                     // the form opens with the old state
+  await search(page, "100013");
+  await page.getByRole("button", { name: /^(Select|Use this customer)$/ }).first().click();
+  await expect(page.getByRole("alert")).toContainText("no longer available");                       // a clear message, not "Session not found"
+  const clock = page.getByRole("timer");
+  const secs = async () => { const [m, s] = (await clock.locator(".reg-clock-total b").innerText()).split(":").map(Number); return m * 60 + s; };
+  expect(await secs()).toBeLessThan(60);                                                            // the old hour is gone; a new clock started
+  await search(page, "100013");
+  await selectFirst(page);
+  await expect(clock.locator("li.now")).toContainText("Review details");                             // and the registration goes on normally
+});

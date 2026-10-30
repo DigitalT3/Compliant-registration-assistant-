@@ -1,5 +1,5 @@
 import { useEffect, useReducer, useState } from "react";
-import { get, post, ApiError } from "../../api/client";
+import { get, post, ApiError, forgetRegistration } from "../../api/client";
 import { useI18n } from "../../i18n";
 import CustomerData from "./CustomerData";
 
@@ -163,7 +163,12 @@ export default function Register({ onViewHistory, meName, config }: { onViewHist
     setBusy(true);
     setErr(null);
     try { return await fn(); }
-    catch (e) { setErr(e instanceof ApiError ? `${e.message}${e.requestId ? ` (${e.requestId.slice(0, 8)})` : ""}` : String(e)); }
+    catch (e) {
+      if (e instanceof ApiError && e.code === "session_not_found") {      // the saved registration no longer exists on the server: start clean
+        forgetRegistration();
+        set({ reset: true });
+        setErr(t("reg.stale"));
+      } else setErr(e instanceof ApiError ? `${e.message}${e.requestId ? ` (${e.requestId.slice(0, 8)})` : ""}` : String(e)); }
     finally { setBusy(false); }
   };
 

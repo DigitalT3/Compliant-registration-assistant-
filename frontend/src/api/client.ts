@@ -8,6 +8,13 @@ let token = sessionStorage.getItem("cra.token") || "";   // session storage: gon
 export function setToken(t: string | null) {
   token = t || "";
   if (t) sessionStorage.setItem("cra.token", t); else sessionStorage.removeItem("cra.token");
+  forgetRegistration();                                  // a registration in progress belongs to whoever was signed in, never to the next person
+}
+
+/** Drop the registration in progress (its clock and session) kept in this browser tab. */
+export function forgetRegistration() {
+  sessionStorage.removeItem("cra.register");
+  sessionStorage.removeItem("cra.currentCustomer");
 }
 export const hasToken = () => !!token;
 

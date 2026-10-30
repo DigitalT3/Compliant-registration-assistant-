@@ -308,6 +308,7 @@ export const en: Record<string, string> = {
   "about.prov.l": "Repeat definition, taxonomy, defaults and field mapping are provisional and need confirmation by Renewi owners. All data is synthetic; there is no connection to Renewi systems.",
   "loading": "Loading…",
   "error": "Error",
+  "reg.stale": "Your earlier registration was no longer available, so a new one has been started. Please search for the customer again.",
   "yes": "Yes",
   "no": "No",
   "auth.title": "Sign in",
