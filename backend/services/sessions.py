@@ -134,7 +134,10 @@ LEGACY_STEPS = {"check_repeats": "repeat_save", "review_save": "repeat_save"}
 
 # PUBLIC_INTERFACE
 def step_durations(events: list, ended: str | None, cap: float | None = None) -> dict:
-    """Seconds per step derived from recorded timestamps (entered to completed/next entered/end).
+    """Seconds per step derived from recorded timestamps (entered to the next step's entry, or to the end).
+
+    A step runs until the next one is entered, so the wait for the app after "Next" counts to the step that was
+    just left and the steps add up to the registration's total.
 
     Each visit to a step counts at most ``cap`` seconds (default ``metrics.step_idle_cap_seconds``), so a
     browser tab left open overnight does not turn one step into hours. The cap is per visit: going back and
@@ -142,7 +145,7 @@ def step_durations(events: list, ended: str | None, cap: float | None = None) ->
     """
     if cap is None:
         cap = settings.get_config()["metrics"].get("step_idle_cap_seconds")
-    out, cur = {}, None
+    out, cur, done = {}, None, None
 
     def close_at(ts):
         nonlocal cur
@@ -156,9 +159,9 @@ def step_durations(events: list, ended: str | None, cap: float | None = None) ->
         step = LEGACY_STEPS.get(e["step"], e["step"])
         if e["event_type"] == "step_entered":
             close_at(e["at"])
-            cur = (step, e["at"])
+            cur, done = (step, e["at"]), None
         elif cur and step == cur[0]:
-            close_at(e["at"])
-    if ended:
-        close_at(ended)
+            done = e["at"]                                  # left the step; it ends when the next one starts
+    if ended or done:
+        close_at(ended or done)
     return {k: round(v, 3) for k, v in out.items()}

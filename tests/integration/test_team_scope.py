@@ -218,3 +218,12 @@ def test_sessions_without_any_field_have_no_first_field_time(client):
     row = next(i for i in client.get("/api/analytics/sessions", headers=ADMIN).json()["items"] if i["id"] == sid)
     assert row["first_field_seconds"] is None and row["first_entry_seconds"] is None
     assert client.get("/api/analytics/summary", headers=ADMIN).json()["first_field_seconds"] == {"mean": None, "median": None, "n": 0}
+
+
+def test_the_wait_between_steps_counts_to_the_step_just_left():
+    events = [{"event_type": "step_entered", "step": "find_customer", "at": "2026-10-29T08:00:00+00:00"},
+              {"event_type": "step_completed", "step": "find_customer", "at": "2026-10-29T08:00:30+00:00"},
+              {"event_type": "step_entered", "step": "review_details", "at": "2026-10-29T08:00:32+00:00"},   # 2 s waiting for the app
+              {"event_type": "step_completed", "step": "review_details", "at": "2026-10-29T08:01:02+00:00"}]
+    got = sessions_svc.step_durations(events, "2026-10-29T08:01:03+00:00")
+    assert got == {"find_customer": 32.0, "review_details": 31.0} and sum(got.values()) == 63.0   # equals start to end
