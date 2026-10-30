@@ -42,6 +42,13 @@ def _insert_repeat_check(conn, session_id, complaint_id, result) -> None:
                   json.dumps([m["id"] for m in result["matches"]]), json.dumps(result), db.now()))
 
 
+# PUBLIC_INTERFACE
+def valid_other_reason(reason) -> bool:
+    """A reason for the cause "Other": at least 3 characters after trimming, and not only punctuation ("." is not a reason)."""
+    text = (reason or "").strip()
+    return len(text) >= 3 and any(ch.isalnum() for ch in text)
+
+
 def _validate(conn, p: dict, cfg: dict) -> None:
     missing = [f for f in cfg["required_fields"] if not str(p.get(f) or "").strip()]
     if missing:
@@ -50,8 +57,8 @@ def _validate(conn, p: dict, cfg: dict) -> None:
         raise ApiError(422, "invalid_type", "Unknown complaint type.")
     if p["root_cause"] not in causes_by_id(cfg):
         raise ApiError(422, "invalid_root_cause", "Root cause is not in the active taxonomy.")
-    if p["root_cause"] == "other" and not (p.get("other_reason") or "").strip():
-        raise ApiError(422, "other_reason_required", "A reason is required when 'Other' is selected.")
+    if p["root_cause"] == "other" and not valid_other_reason(p.get("other_reason")):
+        raise ApiError(422, "other_reason_required", "A reason is required when 'Other' is selected: at least 3 characters, with letters or digits.")
     if not conn.execute("SELECT 1 FROM customers WHERE id=?", (p["customer_id"],)).fetchone():
         raise ApiError(422, "invalid_customer", "Unknown customer.")
     for field, table in (("site_id", "sites"), ("contract_id", "contracts"), ("order_id", "orders")):
@@ -135,8 +142,9 @@ def create(conn, p: dict, user: dict) -> dict:
         cid, stamp = _next_id(conn), db.reference_now().isoformat()
         result = repeat_svc.evaluate_repeat(cfg["repeat_rule"], p, load_history(conn, p["customer_id"]),
                                             db.reference_now(), causes_by_id(cfg))
+        other_reason = (p.get("other_reason") or "").strip() if p["root_cause"] == "other" else ""     # a reason only belongs to "Other"
         payload = {"description": p["description"], "synthetic": True, "complaint_type": p["complaint_type"],
-                   "other_reason": p.get("other_reason") or ""}
+                   "other_reason": other_reason}
         row = {
             "id": cid, "customer_id": p["customer_id"], "site_id": p.get("site_id"),
             "contract_id": p.get("contract_id"), "order_id": p.get("order_id"), "root_cause": p["root_cause"],
@@ -144,7 +152,7 @@ def create(conn, p: dict, user: dict) -> dict:
             "payload": json.dumps(payload), "channel": p["channel"], "registration_date": reg_day,
             "registering_user": who, "original_text": p["description"], "language": p.get("language"),
             "summary_json": json.dumps(p.get("summary")), "summary_meta": json.dumps(p.get("summary_meta")),
-            "complaint_type": p["complaint_type"], "other_reason": (p.get("other_reason") or "").strip() or None,
+            "complaint_type": p["complaint_type"], "other_reason": other_reason or None,
             "rule_version": cfg["repeat_rule"]["version"], "taxonomy_version": cfg["taxonomy_version"],
             "repeat_detected": int(result["is_repeat"]),
             "scenario": p.get("scenario") or (session or {}).get("scenario"), "is_poc": 1, "is_seed": 0,

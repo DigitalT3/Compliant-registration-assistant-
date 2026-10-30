@@ -143,6 +143,11 @@ test("T09 'Other' needs a reason before leaving Classify", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Next", exact: true })).toBeEnabled();
   await page.getByLabel(/Reason for 'Other'/).fill("   ");                                 // blanks do not count
   await expect(page.getByRole("button", { name: "Next", exact: true })).toBeDisabled();
+  await page.getByLabel(/Reason for 'Other'/).fill(".");                                   // nor does a single character or punctuation
+  await expect(page.getByRole("button", { name: "Next", exact: true })).toBeDisabled();
+  await page.getByLabel(/Reason for 'Other'/).fill("ok");
+  await expect(page.getByRole("button", { name: "Next", exact: true })).toBeDisabled();       // at least 3 characters
+  await expect(page.getByRole("alert").filter({ hasText: "at least 3 characters" })).toBeVisible();
   await page.getByLabel(/Reason for 'Other'/).fill("Seagull nest (synthetic)");
   await next(page);
   await expect(save(page)).toBeEnabled();

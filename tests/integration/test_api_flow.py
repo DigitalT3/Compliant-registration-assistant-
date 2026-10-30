@@ -61,7 +61,7 @@ def test_save_rules_and_retrieval(client):
     got = client.get(f"/api/complaints/{cid}", headers=EMP).json()
     assert got["is_poc"] == 1 and got["repeat_checks"][0]["rule_version"]
     r2 = client.post("/api/complaints", headers=EMP,
-                     json={**BASE, "root_cause": "other", "other_reason": "x"}).json()
+                     json={**BASE, "root_cause": "other", "other_reason": "seagull again"}).json()
     assert r2["repeat"]["is_repeat"] and r2["repeat"]["matches"][0]["id"] == cid
     assert client.get("/api/complaints", headers=EMP, params={"page_size": 5}).json()["total"] >= 17
 

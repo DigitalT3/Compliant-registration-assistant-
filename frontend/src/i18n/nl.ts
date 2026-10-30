@@ -134,7 +134,7 @@ export const nl: Record<string, string> = {
   "classify.all": "Alle hoofdoorzaken",
   "classify.search": "Filter oorzaken",
   "classify.other_reason": "Reden voor 'Overig' (verplicht)",
-  "classify.other_needed": "Vul een reden voor 'Overig' in om door te gaan.",
+  "classify.other_needed": "Vul een reden voor 'Overig' in (minstens 3 tekens) om door te gaan.",
   "classify.closest": "Dichtstbijzijnde categorieën",
   "classify.note": "Zekerheid is een heuristische score, geen kans.",
   "repeat.run": "Opnieuw controleren",

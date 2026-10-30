@@ -111,7 +111,8 @@ export default function Register({ onViewHistory, meName, config }: { onViewHist
     const tail = so?.state === "signed_off" ? t("repeat.signed", { who: so.signed_by.join(", "), date: (so.signed_at || "").slice(0, 10) }) : who ? t("repeat.provisional", { who }) : "";
     return `${t("repeat.plain", { v: r.rule_version, what })} ${tail}`.trim();
   };
-  const otherNeedsReason = s.rootCause === "other" && !s.otherReason.trim();   // step 4: "Other" needs a reason before moving on
+  const validReason = (r: string) => r.trim().length >= 3 && /[\p{L}\p{N}]/u.test(r);                           // at least 3 characters with a letter or digit, as on the server
+  const otherNeedsReason = s.rootCause === "other" && !validReason(s.otherReason);   // step 4: "Other" needs a reason before moving on
   useEffect(() => {
     const wants = (config?.summary?.by_type?.[ctype] || []).includes("container_no");
     if (s.step === 3 && s.summary && orderContainer && wants && !s.summary.extras?.container_no) {
@@ -303,7 +304,7 @@ export default function Register({ onViewHistory, meName, config }: { onViewHist
 
   const missing = [
     ["description", s.text], ["complaint_type", val("complaint_type")], ["root_cause", s.rootCause], ["channel", val("channel")],
-    ...(s.rootCause === "other" ? [["other_reason", s.otherReason]] : []),
+    ...(s.rootCause === "other" ? [["other_reason", validReason(s.otherReason) ? s.otherReason : ""]] : []),
     ...Object.entries(s.decisions).filter(([, d]) => d.decision === "reject" && d.reason.trim().length < 3).map(([id]) => ["repeat_reason", ""]),
   ].filter(([, v]) => !String(v || "").trim()).map(([k]) => k);
 

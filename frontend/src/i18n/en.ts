@@ -134,7 +134,7 @@ export const en: Record<string, string> = {
   "classify.all": "All root causes",
   "classify.search": "Filter causes",
   "classify.other_reason": "Reason for 'Other' (required)",
-  "classify.other_needed": "Enter a reason for 'Other' to continue.",
+  "classify.other_needed": "Enter a reason for 'Other' (at least 3 characters) to continue.",
   "classify.closest": "Closest categories",
   "classify.note": "Confidence is a heuristic score, not a probability.",
   "repeat.run": "Check again",

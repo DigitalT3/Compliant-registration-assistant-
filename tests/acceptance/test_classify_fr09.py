@@ -39,7 +39,7 @@ def _register(client, text, chosen):
     shown = client.post("/api/complaints/classify", headers=EMP, json={"text": text, "session_id": sid}).json()["result"]["candidates"]
     cause = shown[chosen]["root_cause_id"] if isinstance(chosen, int) else chosen
     r = client.post("/api/complaints", headers=EMP, json={"customer_id": "C009", "site_id": "C009-S1", "channel": "phone", "complaint_type": "service",
-                                                          "root_cause": cause, "other_reason": "x" if cause == "other" else None, "description": text, "session_id": sid})
+                                                          "root_cause": cause, "other_reason": "test reason" if cause == "other" else None, "description": text, "session_id": sid})
     assert r.status_code == 201, r.text
     return [c["root_cause_id"] for c in shown], cause
 
