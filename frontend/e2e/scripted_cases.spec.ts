@@ -1301,3 +1301,23 @@ test("T65 FR-18/19/20 root-cause analysis screen: themes with coverage, a propos
   await page.getByRole("button", { name: "Agree to this list" }).click();
   await expect(page.getByText("Agreed by 1 of 3")).toBeVisible();
 });
+
+test("T66 repeat override: a disputed link waits for the weekly review, the rule owner records it, the evaluator only sees it", async ({ page, request }) => {
+  const emp = { "X-Demo-User": "demo.emp.a1" };
+  const mk = async () => (await (await request.post(`${API}/api/complaints`, { headers: emp, data: { customer_id: "C007", site_id: "C007-S1", channel: "phone", complaint_type: "service", root_cause: "late", description: "late again" } })).json());
+  const first = await mk();
+  const second = await mk();
+  await request.post(`${API}/api/repeat-disputes`, { headers: emp, data: { complaint_id: second.id, prior_complaint_id: first.id, decision: "reject", reason: "different pickup" } });
+  await openApp(page, "demo.evaluator");
+  await page.getByRole("button", { name: "Evaluation" }).click();
+  const bar = page.getByTestId("dispute-review");
+  await expect(bar).toContainText("Weekly review due");
+  await expect(bar.getByRole("button", { name: "Mark all as reviewed" })).toHaveCount(0);            // the evaluator can see, not record
+  await openApp(page, "demo.admin");
+  await page.getByRole("button", { name: "Configuration" }).click();
+  const bar2 = page.getByTestId("dispute-review");
+  await bar2.getByLabel("Review note (optional)").fill("week 44");
+  await bar2.getByRole("button", { name: "Mark all as reviewed" }).click();
+  await expect(bar2).toContainText("Weekly review up to date");
+  await expect(page.locator("tbody tr", { hasText: "different pickup" })).toContainText("Reviewed");
+});

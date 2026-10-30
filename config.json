@@ -325,7 +325,8 @@
       "edit_rule",
       "readout",
       "rca_view",
-      "rca_run"
+      "rca_run",
+      "review_disputes"
     ],
     "evaluator": [
       "read",
@@ -340,7 +341,8 @@
       "read",
       "analytics",
       "edit_rule",
-      "sign_off_rule"
+      "sign_off_rule",
+      "review_disputes"
     ],
     "business_owner": [
       "read",

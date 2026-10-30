@@ -151,7 +151,7 @@ function AppShell() {
           {current === "rca" && <RootCauseAnalysis canRun={me.permissions.includes("rca_run")} canReview={me.permissions.includes("review_taxonomy")} />}
           {current === "readout" && <Readout canDecide={me.permissions.includes("decide")} />}
           {current === "evaluation" && <Evaluation config={config} />}
-          {current === "config" && <Configuration config={config} canSign={me.permissions.includes("sign_off_rule")} onUpdated={setConfig} />}
+          {current === "config" && <Configuration config={config} canSign={me.permissions.includes("sign_off_rule")} canReviewDisputes={me.permissions.includes("review_disputes")} onUpdated={setConfig} />}
           {current === "users" && <Users config={config} meId={me.id} />}
           {current === "about" && <About config={config} />}
         </main>
@@ -544,13 +544,14 @@ function Evaluation({ config }: { config: any }) {
   const { t } = useI18n();
   const [evaluations, setEvaluations] = useState<any>(null);
   const [disputes, setDisputes] = useState<any[]>([]);
+  const [disputeReview, setDisputeReview] = useState<any>(null);
   const [form, setForm] = useState({ complaint_id: "", usable: "", expert_cause: "" });
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const load = () => {
     Promise.all([get<any>("/api/evaluations"), get<any>("/api/repeat-disputes")])
-      .then(([evals, disputeRows]) => { setEvaluations(evals); setDisputes(disputeRows.items); setError(null); })
+      .then(([evals, disputeRows]) => { setEvaluations(evals); setDisputes(disputeRows.items); setDisputeReview(disputeRows.review); setError(null); })
       .catch((cause) => setError(cause instanceof ApiError ? cause.message : String(cause)));
   };
   useEffect(load, []);
@@ -580,9 +581,37 @@ function Evaluation({ config }: { config: any }) {
       <UserTestData config={config} onChanged={load} />
       <article className="card">
         <h3>{t("eval.disputes")}</h3>
+        <DisputeReviewBar review={disputeReview} canReview={false} onDone={() => undefined} />
         <DisputeTable items={disputes} config={config} />
       </article>
     </section>
+  );
+}
+
+/** The weekly review of repeat decisions: what is waiting, when it was last done, and (rule owner, administrator) a button to record it. */
+function DisputeReviewBar({ review, canReview, onDone }: { review: any; canReview: boolean; onDone: () => void }) {
+  const { t } = useI18n();
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  if (!review) return null;
+  const record = () => {
+    setBusy(true);
+    post("/api/repeat-disputes/review", { note: note || null }).then(() => { setNote(""); setError(null); onDone(); })
+      .catch((e) => setError(e instanceof ApiError ? e.message : String(e))).finally(() => setBusy(false));
+  };
+  return (
+    <div className={review.due ? "notice warn" : "notice"} data-testid="dispute-review">
+      <p>
+        <strong>{review.due ? t("ds.due") : t("ds.up_to_date")}</strong> {t("ds.waiting_n", { n: review.pending })}{" "}
+        {review.last_review_at ? t("ds.last", { date: String(review.last_review_at).slice(0, 10), who: review.last_review_by || "–" }) : t("ds.never")}
+      </p>
+      {canReview && <p>
+        <input aria-label={t("ds.review_note")} placeholder={t("ds.review_note")} value={note} onChange={(e) => setNote(e.target.value)} />{" "}
+        <button disabled={busy} onClick={record}>{t("ds.mark")}</button>
+      </p>}
+      {error && <p className="error" role="alert">{error}</p>}
+    </div>
   );
 }
 
@@ -593,7 +622,7 @@ function DisputeTable({ items, config }: { items: any[]; config: any }) {
   if (!items.length) return <p className="empty">{t("eval.none")}</p>;
   return (
     <table>
-      <thead><tr><th>{t("ds.when")}</th><th>{t("ds.complaint")}</th><th>{t("ds.earlier")}</th><th>{t("ds.decision")}</th><th>{t("ds.reason")}</th><th>{t("ds.by")}</th></tr></thead>
+      <thead><tr><th>{t("ds.when")}</th><th>{t("ds.complaint")}</th><th>{t("ds.earlier")}</th><th>{t("ds.decision")}</th><th>{t("ds.reason")}</th><th>{t("ds.by")}</th><th>{t("ds.review")}</th></tr></thead>
       <tbody>{items.map((d) => (
         <tr key={d.id}>
           <td>{String(d.at).slice(0, 10)}</td>
@@ -602,21 +631,23 @@ function DisputeTable({ items, config }: { items: any[]; config: any }) {
           <td>{d.decision === "reject" ? t("repeat.reject") : t("repeat.confirm")}</td>
           <td>{d.reason}</td>
           <td>{d.actor_name || d.actor}<br /><small>{d.rule_version}</small></td>
+          <td>{d.reviewed_at ? <>{t("ds.reviewed")}<br /><small>{String(d.reviewed_at).slice(0, 10)} · {d.reviewed_by_name}{d.review_note ? ` · ${d.review_note}` : ""}</small></> : d.decision === "reject" ? t("ds.waiting") : "–"}</td>
         </tr>
       ))}</tbody>
     </table>
   );
 }
 
-function Configuration({ config, canSign, onUpdated }: { config: any; canSign: boolean; onUpdated: (config: any) => void }) {
+function Configuration({ config, canSign, canReviewDisputes, onUpdated }: { config: any; canSign: boolean; canReviewDisputes: boolean; onUpdated: (config: any) => void }) {
   const { t } = useI18n();
   const [signoff, setSignoff] = useState<any>(null);
   const [disputes, setDisputes] = useState<any[]>([]);
+  const [disputeReview, setDisputeReview] = useState<any>(null);
   const [comment, setComment] = useState("");
   const [busy, setBusy] = useState(false);
   const loadSignoff = () => {
     get<any>("/api/config/repeat-rule").then((r) => setSignoff(r.signoff)).catch(() => undefined);
-    get<any>("/api/repeat-disputes").then((r) => setDisputes(r.items)).catch(() => undefined);
+    get<any>("/api/repeat-disputes").then((r) => { setDisputes(r.items); setDisputeReview(r.review); }).catch(() => undefined);
   };
   useEffect(loadSignoff, []);
   const sign = async (decision: "sign_off" | "changes") => {
@@ -678,6 +709,7 @@ function Configuration({ config, canSign, onUpdated }: { config: any; canSign: b
         <h3>{t("eval.disputes")}</h3>
         <p className="muted">{t("ds.note")}</p>
         <button className="secondary" onClick={() => download("/api/export/disputes.csv", "disputes.csv").catch((c) => setError(String(c.message || c)))}>{t("ds.export")}</button>
+        <DisputeReviewBar review={disputeReview} canReview={canReviewDisputes} onDone={loadSignoff} />
         <DisputeTable items={disputes} config={config} />
       </article>
       <h3>{t("rule.edit")}</h3>

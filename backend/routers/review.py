@@ -57,7 +57,18 @@ def create_dispute(body: DisputeIn, user: dict = Depends(require("register"))):
 def list_disputes(user: dict = Depends(require("read"))):
     """List decisions with who, when, both complaints and the original rule evidence."""
     with connection() as conn:
-        return {"items": [dict(r, evidence=json.loads(r["evidence"] or "{}")) for r in disputes.listing(conn)]}
+        return {"items": [dict(r, evidence=json.loads(r["evidence"] or "{}")) for r in disputes.listing(conn)], "review": disputes.review_status(conn)}
+
+
+class DisputeReviewIn(BaseModel):
+    note: str | None = Field(None, max_length=500)
+
+
+@router.post("/api/repeat-disputes/review", summary="Record the weekly review of repeat decisions")
+def review_disputes(body: DisputeReviewIn, user: dict = Depends(require("review_disputes"))):
+    """Marks every decision not yet reviewed as reviewed by the caller (rule owner or administrator), with an optional note."""
+    with connection() as conn:
+        return disputes.mark_reviewed(conn, user, body.note)
 
 
 @router.post("/api/evaluations", status_code=201, summary="Rate a summary / label the expert cause")

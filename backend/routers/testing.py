@@ -147,9 +147,10 @@ def export_disputes(user: dict = Depends(require("analytics"))):
     with connection() as conn:
         items = disputes.listing(conn)
     return _csv(["at", "complaint_id", "customer", "site", "cause", "earlier_complaint_id", "earlier_date", "earlier_cause", "earlier_status",
-                 "decision", "reason", "by", "rule_version"],
+                 "decision", "reason", "by", "rule_version", "reviewed_at", "reviewed_by", "review_note"],
                 [[i["at"], i["complaint_id"], i["customer_name"], i["site_name"], i["cause"], i["prior_complaint_id"], (i["prior_created"] or "")[:10],
-                  i["prior_cause"], i["prior_status"], i["decision"], i["reason"], i["actor_name"], i["rule_version"]] for i in items], "disputes.csv")
+                  i["prior_cause"], i["prior_status"], i["decision"], i["reason"], i["actor_name"], i["rule_version"],
+                  i["reviewed_at"], i["reviewed_by_name"], i["review_note"]] for i in items], "disputes.csv")
 
 
 @router.get("/api/export/employees.csv", summary="How each employee registers, for Power BI")

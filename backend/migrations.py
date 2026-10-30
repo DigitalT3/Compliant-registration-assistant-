@@ -169,8 +169,14 @@ def _migrate_v10(db) -> None:
     _add_column(db, "ai_events", "detail", "TEXT")
 
 
+def _migrate_v11(db) -> None:
+    """The weekly review of repeat decisions (FR-13): when a decision was reviewed, by whom, with what note."""
+    for col in ("reviewed_at", "reviewed_by", "review_note"):
+        _add_column(db, "repeat_disputes", col, "TEXT")
+
+
 MIGRATIONS = {2: _migrate_v2, 3: _migrate_v3, 4: _migrate_v4, 5: _migrate_v5, 6: _migrate_v6, 7: _migrate_v7, 8: _migrate_v8,
-              9: _migrate_v9, 10: _migrate_v10}
+              9: _migrate_v9, 10: _migrate_v10, 11: _migrate_v11}
 
 
 # PUBLIC_INTERFACE
