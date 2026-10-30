@@ -118,8 +118,8 @@ label { display: grid; gap: .3rem; font-weight: 600; font-size: .92rem; color: v
 .header-controls label { font-size: .7rem; min-width: 120px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
 .header-controls select { font-size: .9rem; padding: .35rem .5rem; }
 .header-controls button { padding: .4rem .8rem; font-size: .88rem; }
-.content { width: 100%; max-width: 1360px; margin: 0 auto; padding: 1.5rem 1.75rem 3rem; animation: page-in .32s var(--ease) both; }
-@keyframes page-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.content { width: 100%; max-width: 1360px; margin: 0 auto; padding: 1.5rem 1.75rem 3rem; animation: page-in .16s ease-out; }
+@keyframes page-in { from { opacity: .35; } to { opacity: 1; } }
 .card { overflow-x: auto; padding: 1.1rem 1.2rem; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); margin: .85rem 0; box-shadow: var(--shadow-1); transition: box-shadow .2s var(--ease), border-color .2s var(--ease); }
 .card:hover { box-shadow: 0 3px 10px rgb(16 40 60 / 8%); }
 .ok { color: var(--ok); background: var(--ok-soft); padding: .7rem .9rem; border-radius: var(--radius-sm); border: 1px solid #bfe6cf; }
@@ -204,7 +204,7 @@ code { background: #eef2f6; border-radius: 4px; padding: .05rem .3rem; font-size
 
 /* Sign-in / sign-up and user administration */
 .auth-page { min-height: 100vh; display: grid; place-items: center; padding: 1.5rem; background: radial-gradient(1200px 500px at 50% -10%, #d6eee6 0%, var(--bg) 60%); }
-.auth-card { width: min(440px, 100%); background: #fff; animation: page-in .4s var(--ease) both; border: 1px solid var(--line); border-radius: 10px; padding: 1.6rem; box-shadow: 0 4px 18px rgb(0 0 0 / 7%); }
+.auth-card { width: min(440px, 100%); background: #fff; animation: page-in .2s ease-out; border: 1px solid var(--line); border-radius: 10px; padding: 1.6rem; box-shadow: 0 4px 18px rgb(0 0 0 / 7%); }
 .auth-card h1 { margin: 0 0 .2rem; font-size: 1.35rem; }
 .auth-card .poc-banner { margin: 0 0 1rem; }
 .auth-card .lang { float: right; width: auto; }

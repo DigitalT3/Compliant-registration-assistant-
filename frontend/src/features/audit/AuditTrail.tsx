@@ -101,7 +101,7 @@ export default function AuditTrail({ config }: { config: any }) {
                 <td>{r.customer_name}<br /><small>{r.customer_number}</small></td>
                 <td>{cell(r.site_name)}</td>
                 <td>{name(config.types, r.complaint_type)}</td>
-                <td>{name(config.root_causes, r.root_cause)}</td>
+                <td>{name(config.root_causes_all || config.root_causes, r.root_cause)}</td>
                 <td>{r.channel}</td>
                 <td>{r.status}</td>
                 <td>{r.repeat_detected === null ? "–" : r.repeat_detected ? t("yes") : t("no")}</td>
@@ -138,8 +138,8 @@ export default function AuditTrail({ config }: { config: any }) {
                     <table><thead><tr><th>{t("col.cause")}</th><th>%</th><th>{t("ds.reason")}</th></tr></thead>
                       <tbody>{detail.log.suggestions.causes.map((c: any) => (
                         <tr key={c.root_cause_id} className={c.root_cause_id === detail.log.suggestions.selected_cause ? "selected" : undefined}>
-                          <td>{name(config.root_causes, c.root_cause_id)}</td><td>{Math.round(c.confidence * 100)}</td><td>{c.reason}</td></tr>))}</tbody></table>
-                    <p>{t("audit.log.chosen")}: <b>{name(config.root_causes, detail.log.suggestions.selected_cause)}</b> — {t(`audit.cause.${detail.log.suggestions.cause_result}`)}</p>
+                          <td>{name(config.root_causes_all || config.root_causes, c.root_cause_id)}</td><td>{Math.round(c.confidence * 100)}</td><td>{c.reason}</td></tr>))}</tbody></table>
+                    <p>{t("audit.log.chosen")}: <b>{name(config.root_causes_all || config.root_causes, detail.log.suggestions.selected_cause)}</b> — {t(`audit.cause.${detail.log.suggestions.cause_result}`)}</p>
                   </>)}
                   {detail.log.suggestions.summary_result && <p>{t("summary")}: {detail.log.suggestions.summary_result === "kept" ? t("audit.log.summary_kept")
                     : t("audit.log.summary_changed", { f: detail.log.suggestions.summary_changed_fields.join(", ") })}</p>}

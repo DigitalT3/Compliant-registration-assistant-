@@ -2,6 +2,7 @@
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
 
+from .. import cache
 from ..auth import require
 from ..dbutil import connection
 from ..services import metrics, scope, sessions
@@ -71,8 +72,10 @@ def summary(date_from: str | None = None, date_to: str | None = None, complaint_
     """Aggregate metrics with sample sizes; ``empty=true`` when nothing is recorded."""
     f = scope.scoped(user, _filters(date_from, date_to, complaint_type, root_cause, repeat, scenario, group,
                                     group_by, mode, participant))
-    with connection() as conn:
-        out = metrics.summary(conn, f)
+    def compute():
+        with connection() as conn:
+            return metrics.summary(conn, f)
+    out = cache.remember(("summary", user["id"], tuple(sorted((k, str(v)) for k, v in f.items()))), compute)
     team = scope.lead_team(user)
     return {**out, "scope": {"team": team}} if team else out
 
@@ -86,8 +89,10 @@ def employees(group: str | None = None, mode: str | None = Query(None, pattern="
     registrations are hidden (``value`` is null).
     """
     f = scope.scoped(user, _filters(None, None, None, None, None, None, group, mode=mode))
-    with connection() as conn:
-        out = metrics.employee_breakdown(conn, f)
+    def compute():
+        with connection() as conn:
+            return metrics.employee_breakdown(conn, f)
+    out = cache.remember(("employees", user["id"], tuple(sorted((k, str(v)) for k, v in f.items()))), compute)
     team = scope.lead_team(user)
     return {**out, "scope": {"team": team}} if team else out
 

@@ -6,7 +6,8 @@ import time
 
 from . import db
 
-OVERRIDABLE = ("repeat_rule", "defaults")
+OVERRIDABLE = ("repeat_rule", "defaults", "cause_list")
+TAXONOMY_KEYS = ("root_causes", "root_cause_categories", "retired_causes", "taxonomy_version", "applied_from")
 
 # The admin overrides are read from the database. Doing that on every request costs two network round
 # trips on a hosted database, so they are cached briefly and the cache is cleared whenever they change.
@@ -18,6 +19,8 @@ _OVERRIDES_TTL_S = 15
 def invalidate_config() -> None:
     """Forget cached overrides (call after changing config_versions or resetting the database)."""
     _OVERRIDES.clear()
+    from .services import accounts      # a reset database brings back its own accounts
+    accounts.forget_users()
 
 
 def _overrides() -> dict:
@@ -49,7 +52,11 @@ def get_config() -> dict:
     """
     cfg = db.config()
     for kind, content in _overrides().items():
-        cfg[kind] = copy.deepcopy(content)
+        if kind == "cause_list":                         # an applied cause list brings its categories, version and retired causes along
+            cfg.update({k: copy.deepcopy(content[k]) for k in TAXONOMY_KEYS if k in content})
+        else:
+            cfg[kind] = copy.deepcopy(content)
+    cfg.setdefault("retired_causes", [])
     return cfg
 
 
@@ -86,4 +93,5 @@ def abandon_after_minutes() -> int:
 # PUBLIC_INTERFACE
 def causes_by_id(cfg: dict | None = None) -> dict:
     """Map root-cause id to its taxonomy entry."""
-    return {c["id"]: c for c in (cfg or get_config())["root_causes"]}
+    cfg = cfg or get_config()
+    return {c["id"]: c for c in cfg["root_causes"] + cfg.get("retired_causes", [])}   # a retired cause still resolves, for records saved under it

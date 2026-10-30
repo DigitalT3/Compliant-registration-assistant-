@@ -57,7 +57,7 @@ def _validate(conn, p: dict, cfg: dict) -> None:
         raise ApiError(422, "missing_required_fields", "Required fields missing.", {"fields": missing})
     if p["complaint_type"] not in {t["id"] for t in cfg["types"]}:
         raise ApiError(422, "invalid_type", "Unknown complaint type.")
-    if p["root_cause"] not in causes_by_id(cfg):
+    if p["root_cause"] not in {c["id"] for c in cfg["root_causes"]}:
         raise ApiError(422, "invalid_root_cause", "Root cause is not in the active taxonomy.")
     if p["root_cause"] == "other" and not valid_other_reason(p.get("other_reason")):
         raise ApiError(422, "other_reason_required", "A reason is required when 'Other' is selected: at least 3 characters, with letters or digits.")

@@ -329,7 +329,9 @@
       "review_disputes",
       "decide",
       "review_taxonomy",
-      "sign_off_rule"
+      "sign_off_rule",
+      "apply_taxonomy",
+      "freeze_taxonomy"
     ],
     "evaluator": [
       "read",
@@ -338,7 +340,8 @@
       "review_taxonomy",
       "readout",
       "rca_view",
-      "rca_run"
+      "rca_run",
+      "apply_taxonomy"
     ],
     "rule_owner": [
       "read",
@@ -352,7 +355,8 @@
       "analytics",
       "readout",
       "decide",
-      "rca_view"
+      "rca_view",
+      "freeze_taxonomy"
     ],
     "governance": [
       "read",

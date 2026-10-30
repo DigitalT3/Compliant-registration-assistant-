@@ -16,7 +16,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from . import db, seed, settings
+from . import cache, db, seed, settings
 from .errors import ApiError
 from .routers import accounts, audit_trail, complaints, customers, health_config, rca, readout, reporting, review, sessions, testing
 
@@ -84,6 +84,8 @@ def create_app() -> FastAPI:
         if length and length.isdigit() and int(length) > settings.max_body_bytes():
             return _envelope(request, 413, "payload_too_large", "Request body too large.")
         response = await call_next(request)
+        if request.method not in ("GET", "HEAD", "OPTIONS"):
+            cache.clear()                    # anything written may change the dashboard figures
         response.headers["X-Request-ID"] = request.state.request_id
         return response
 

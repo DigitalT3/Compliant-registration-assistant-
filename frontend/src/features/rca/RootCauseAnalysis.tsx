@@ -1,18 +1,26 @@
 import React, { useEffect, useState } from "react";
-import { ApiError, get, post } from "../../api/client";
+import { ApiError, get, post, put } from "../../api/client";
 import { useI18n } from "../../i18n";
 
 const pct = (x: number | null | undefined) => (x == null ? "–" : `${(x * 100).toFixed(1)}%`);
 
 /** Root-cause analysis after the build (FR-18 to FR-20): themes in "Other", a proposed shorter list, and the re-label test. */
-export default function RootCauseAnalysis({ canRun, canReview }: { canRun: boolean; canReview: boolean }) {
+export default function RootCauseAnalysis({ canRun, canReview, canApply, canFreeze, onListChanged }:
+  { canRun: boolean; canReview: boolean; canApply?: boolean; canFreeze?: boolean; onListChanged?: () => void }) {
   const { t } = useI18n();
   const [d, setD] = useState<any>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [comment, setComment] = useState("");
+  const [live, setLive] = useState<any>(null);
+  const [note, setNote] = useState("");
+  const [done, setDone] = useState<string | null>(null);
   const fail = (e: unknown) => setError(e instanceof ApiError ? e.message : String(e));
-  const load = () => get<any>("/api/rca").then((r) => { setD(r); setError(null); }).catch(fail);
+  const load = () => Promise.all([get<any>("/api/rca"), get<any>("/api/rca/live")]).then(([r, l]) => { setD(r); setLive(l); setError(null); }).catch(fail);
+  const change = (what: string, path: string, message: string, method: "post" | "put" = "post", body: unknown = { note: note || null }) => {
+    setBusy(what); setDone(null);
+    (method === "put" ? put(path, body) : post(path, body)).then(() => { setNote(""); setDone(message); onListChanged?.(); return load(); }).catch(fail).finally(() => setBusy(null));
+  };
   useEffect(() => { load(); }, []);
 
   const run = (what: string, path: string, body: unknown = {}) => {
@@ -52,6 +60,33 @@ export default function RootCauseAnalysis({ canRun, canReview }: { canRun: boole
           </div>}
         </>}
       </article>
+
+      {pr && live && <article className="card" aria-label={t("rca.live")}><h3>{t("rca.live")}</h3>
+        <p className="muted">{t("rca.live.help")}</p>
+        <p><strong>{t("rca.live.version", { v: live.taxonomy_version })}</strong></p>
+        {done && <p className="ok" role="status">{done}</p>}
+        {live.freeze?.frozen && <p className="warn">{t("rca.live.frozen_by", { by: live.freeze.by, at: live.freeze.at?.slice(0, 16).replace("T", " ") })}{live.freeze.note ? ` – ${live.freeze.note}` : ""}</p>}
+        {live.blockers.length === 0
+          ? <p className="ok">{t("rca.live.ready")}</p>
+          : <ul>{live.blockers.map((b: string) => <li key={b} className="warn-text">{t(`rca.live.block.${b}`)}{b === "registration_in_progress" ? ` (${live.in_progress})` : ""}</li>)}</ul>}
+        {live.preview && live.preview.mapping.length > 0 && <>
+          <h4>{t("rca.live.mapping")}</h4>
+          <table><thead><tr><th>{t("rca.live.col.old")}</th><th>{t("rca.live.col.new")}</th><th>{t("rca.live.col.records")}</th></tr></thead>
+            <tbody>{live.preview.mapping.map((m: any) => <tr key={m.old_id}><td>{m.old_name}</td><td>{pr.categories.find((c: any) => c.id === m.new_id)?.name_en || m.new_id}</td><td>{m.records}</td></tr>)}</tbody></table>
+          <p><small>{t("rca.live.kept", { n: live.preview.kept.length })} {t("rca.live.remapped", { n: live.preview.records_remapped })}</small></p>
+        </>}
+        {(canApply || canFreeze) && <div className="inline">
+          {canApply && <label>{t("rca.live.note")}<input value={note} maxLength={300} onChange={(e) => setNote(e.target.value)} /></label>}
+          {canApply && <button disabled={!!busy || !live.can_apply} onClick={() => window.confirm(t("rca.live.apply.confirm")) && change("apply", "/api/rca/proposal/apply", t("rca.live.applied"))}>{t("rca.live.apply")}</button>}
+          {canApply && <button className="secondary" disabled={!!busy || !live.can_restore} onClick={() => window.confirm(t("rca.live.restore.confirm")) && change("restore", "/api/rca/live/restore", t("rca.live.restored"))}>{t("rca.live.restore")}</button>}
+          {canFreeze && <button className="secondary" disabled={!!busy} onClick={() => change("freeze", "/api/rca/live/freeze", "", "put", { frozen: !live.freeze?.frozen, note: note || null })}>{live.freeze?.frozen ? t("rca.live.unfreeze") : t("rca.live.freeze")}</button>}
+        </div>}
+        {live.history.length > 0 && <>
+          <h4>{t("rca.live.history")}</h4>
+          <table><thead><tr><th>{t("rca.live.col.version")}</th><th>{t("rca.live.col.when")}</th><th>{t("rca.live.col.by")}</th><th>{t("rca.live.col.state")}</th></tr></thead>
+            <tbody>{live.history.map((h: any) => <tr key={h.version}><td>{h.taxonomy_version}</td><td>{h.applied_at?.slice(0, 16).replace("T", " ")}</td><td>{h.applied_by}</td><td>{h.active ? t("rca.live.active") : t("rca.live.past")}</td></tr>)}</tbody></table>
+        </>}
+      </article>}
 
       <article className="card"><h3>{t("rca.relabel")} <small>(FR-20)</small></h3>
         <p>{t("rca.relabel.help", { n: d.expert_labelled, m: d.targets.records })}</p>

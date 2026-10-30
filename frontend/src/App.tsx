@@ -25,6 +25,9 @@ const LANDING: Record<string, Page> = {
   employee: "register", lead: "dashboard", evaluator: "evaluation", admin: "users", governance: "audit", viewer: "history", rule_owner: "config", business_owner: "readout",
 };
 
+/** The live causes plus the retired ones, so that a saved registration made under an old list still shows its cause name. */
+const withCauses = (c: any) => ({ ...c, root_causes_all: [...(c.root_causes || []), ...(c.retired_causes || [])] });
+
 function ErrorMessage({ error }: { error: string | null }) {
   const { t } = useI18n();
   return error ? <p className="error" role="alert">{t("error")}: {error}</p> : null;
@@ -61,9 +64,11 @@ function AppShell() {
   useEffect(() => {
     if (!me) return;
     Promise.all([get("/api/config"), get("/api/config/root-causes"), get("/api/auth/options")])
-      .then(([appConfig, taxonomy, opts]) => { setConfig({ ...appConfig, ...taxonomy }); setFnLabels(opts.functions); })
+      .then(([appConfig, taxonomy, opts]) => { setConfig(withCauses({ ...appConfig, ...taxonomy })); setFnLabels(opts.functions); })
       .catch((cause) => setError(cause instanceof ApiError ? cause.message : String(cause)));
   }, [me?.id]);
+
+  const reloadConfig = () => Promise.all([get("/api/config"), get("/api/config/root-causes")]).then(([appConfig, taxonomy]) => setConfig(withCauses({ ...appConfig, ...taxonomy }))).catch(() => undefined);
 
   const signOut = async () => {
     try { await post("/api/auth/logout"); } catch { /* already signed out */ }
@@ -167,7 +172,7 @@ function AppShell() {
           {current === "audit" && <AuditTrail config={config} />}
           {current === "dashboard" && <Dashboard config={config} />}
           {current === "rootcauses" && <RootCauses config={config} canReview={me.permissions.includes("review_taxonomy")} onReviewed={(review: any) => setConfig({ ...config, review })} />}
-          {current === "rca" && <RootCauseAnalysis canRun={me.permissions.includes("rca_run")} canReview={me.permissions.includes("review_taxonomy")} />}
+          {current === "rca" && <RootCauseAnalysis canRun={me.permissions.includes("rca_run")} canReview={me.permissions.includes("review_taxonomy")} canApply={me.permissions.includes("apply_taxonomy")} canFreeze={me.permissions.includes("freeze_taxonomy")} onListChanged={reloadConfig} />}
           {current === "readout" && <Readout canDecide={me.permissions.includes("decide")} />}
           {current === "evaluation" && <Evaluation config={config} />}
           {current === "config" && <Configuration config={config} canSign={me.permissions.includes("sign_off_rule")} canReviewDisputes={me.permissions.includes("review_disputes")} onUpdated={setConfig} />}
@@ -250,7 +255,7 @@ function History({ config }: { config: any }) {
                 <td>{item.id}</td>
                 <td>{String(item.created).slice(0, 10)}</td>
                 <td>{label(item.complaint_type, config.types)}</td>
-                <td>{label(item.root_cause, config.root_causes)}</td>
+                <td>{label(item.root_cause, config.root_causes_all || config.root_causes)}</td>
                 <td>{item.status}</td>
                 <td>{item.repeat_detected ? t("yes") : t("no")}</td>
               </tr>
@@ -642,7 +647,7 @@ function DisputeReviewBar({ review, canReview, onDone }: { review: any; canRevie
 /** The confirm / dispute decisions on repeat links, for review by the rule owner (FR-13). */
 function DisputeTable({ items, config }: { items: any[]; config: any }) {
   const { t, lang } = useI18n();
-  const cause = (id: string) => (config.root_causes || []).find((c: any) => c.id === id)?.[lang] || id || "–";
+  const cause = (id: string) => (config.root_causes_all || config.root_causes || []).find((c: any) => c.id === id)?.[lang] || id || "–";
   if (!items.length) return <p className="empty">{t("eval.none")}</p>;
   return (
     <table>

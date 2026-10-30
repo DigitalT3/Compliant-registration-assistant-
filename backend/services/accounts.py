@@ -54,17 +54,30 @@ def verify_password(password: str, stored: str | None) -> bool:
 
 # --- tokens --------------------------------------------------------------------------------------
 
+_SECRETS: dict = {}     # signing secret per database: it never changes, so it is read once
+_USERS: dict = {}       # token -> (checked at, user row): a signed-in call needs no database round trips for a few seconds
+_USERS_TTL_S = 10
+
+
+def forget_users() -> None:
+    """Drop the remembered sign-ins (call whenever an account, its role or its password changes)."""
+    _USERS.clear()
+
+
 def _secret(conn) -> bytes:
     env = os.environ.get("AUTH_SECRET")
     if env:
         return env.encode()
+    if db.location() in _SECRETS:
+        return _SECRETS[db.location()]
     row = conn.execute("SELECT value FROM app_settings WHERE key='auth_secret'").fetchone()
     if not row:  # generated once and kept in the database, so tokens survive restarts without extra setup
         conn.execute("INSERT INTO app_settings(key,value) VALUES('auth_secret',?) ON CONFLICT(key) DO NOTHING",
                      (secrets.token_hex(32),))
         conn.commit()
         row = conn.execute("SELECT value FROM app_settings WHERE key='auth_secret'").fetchone()
-    return row[0].encode()
+    _SECRETS[db.location()] = row[0].encode()
+    return _SECRETS[db.location()]
 
 
 def _b64(data: bytes) -> str:
@@ -219,6 +232,7 @@ def admin_reset_password(conn, actor: dict, user_id: str) -> dict:
                  (hash_password(temp), user_id))
     audit(conn, actor["id"], "password_reset_by_admin", {"user": user_id})
     conn.commit()
+    forget_users()
     return {"user": public(by_id(conn, user_id)), "temporary_password": temp}
 
 
@@ -235,6 +249,7 @@ def change_password(conn, user_id: str, current: str, new: str) -> dict:
     conn.execute("UPDATE users SET password_hash=?, must_change_password=0 WHERE id=?", (new_hash, user_id))
     audit(conn, user_id, "password_changed", {})
     conn.commit()
+    forget_users()
     token, ttl = issue_token(conn, user_id, new_hash)      # older tokens stop working; this is the new session
     return {"token": token, "expires_in": ttl, "user": public(by_id(conn, user_id))}
 
@@ -313,6 +328,7 @@ def update_user(conn, actor: dict, user_id: str, role=None, user_group=None, sta
                  (new["role"], new["user_group"], new["status"], new["function"], user_id))
     audit(conn, actor["id"], "user_updated", {"user": user_id, "from": {k: target[k] for k in new}, "to": new})
     conn.commit()
+    forget_users()
     return public(by_id(conn, user_id))
 
 

@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field
 
 from ..auth import require
 from ..dbutil import connection
-from ..services import root_cause_analysis as rca
+from ..services import root_cause_analysis as rca, taxonomy_apply
 
 router = APIRouter(tags=["root-cause analysis"])
 
@@ -51,3 +51,36 @@ def proposal_review(body: ReviewIn, user: dict = Depends(require("review_taxonom
 def relabel(user: dict = Depends(require("rca_run"))):
     with connection() as conn:
         return rca.run_relabel(conn, user)
+
+
+class NoteIn(BaseModel):
+    note: str | None = Field(None, max_length=300)
+
+
+class FreezeIn(BaseModel):
+    frozen: bool
+    note: str | None = Field(None, max_length=200)
+
+
+@router.get("/api/rca/live", summary="What it takes to make the proposal the live cause list, and what can be restored")
+def live_state(user: dict = Depends(require("rca_view"))):
+    with connection() as conn:
+        return taxonomy_apply.state(conn)
+
+
+@router.post("/api/rca/proposal/apply", summary="Make the agreed proposal the live cause list")
+def apply_proposal(body: NoteIn, user: dict = Depends(require("apply_taxonomy"))):
+    with connection() as conn:
+        return taxonomy_apply.apply(conn, user, body.note)
+
+
+@router.post("/api/rca/live/restore", summary="Bring the previous cause list back")
+def restore_list(body: NoteIn, user: dict = Depends(require("apply_taxonomy"))):
+    with connection() as conn:
+        return taxonomy_apply.restore(conn, user, body.note)
+
+
+@router.put("/api/rca/live/freeze", summary="Freeze or unfreeze the cause list")
+def freeze_list(body: FreezeIn, user: dict = Depends(require("freeze_taxonomy"))):
+    with connection() as conn:
+        return {**taxonomy_apply.state(conn), "freeze": taxonomy_apply.set_freeze(conn, user, body.frozen, body.note)}

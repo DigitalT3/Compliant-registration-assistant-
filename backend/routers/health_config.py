@@ -72,7 +72,7 @@ def get_causes():
     with connection() as conn:
         review = taxonomy_review.status(conn, c)
     return {"taxonomy_version": c["taxonomy_version"], "types": c["types"], "root_causes": c["root_causes"],
-            "categories": c["root_cause_categories"], "meta": c["provisional_meta"]["taxonomy"], "review": review}
+            "categories": c["root_cause_categories"], "retired_causes": c.get("retired_causes", []), "meta": c["provisional_meta"]["taxonomy"], "review": review}
 
 
 class ReviewIn(BaseModel):

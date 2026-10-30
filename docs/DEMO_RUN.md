@@ -170,6 +170,7 @@ As admin:
 4. **Weekly review** (35): as admin, Configuration: the banner "Weekly review due" with the disputes from R13; "Mark all as reviewed" with a note.
 5. **Readout** (36): as admin (or a business-owner account for Glenn), Readout: evidence, open conditions, record Go, Adjust or Stop with a reason.
 6. **Root-cause analysis** (37): as admin or an evaluator: Find themes, Propose a list, each of the three agrees, Re-label with the current list (fewer than 200 shows "indicative"). All on synthetic data and labelled that way.
+   Then, still on **Root-cause analysis**, the **Live cause list** card: as admin, press **Freeze the cause list** and show that the apply button is blocked ("frozen"); unfreeze. Once all three owners have agreed, the card lists what happens to each old cause and how many saved registrations it affects; any of the three owners or the admin presses **Apply as live cause list**. Show the new list on Register, an old registration still showing its cause name, the agreement carried over (3 of 3), and **Restore the previous list**. It is blocked while someone is mid-registration.
 
 ## Part 8. Dashboard and reporting (items 23 to 28)
 

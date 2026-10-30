@@ -50,3 +50,19 @@ def review(conn, user: dict, key: str, here: str, decision: str, comment: str | 
                  (key, json.dumps(_load(conn, key) + [entry], ensure_ascii=False)))
     audit(conn, user["id"], actions[0] if decision == "agree" else actions[1], {"content_hash": here, "comment": entry["comment"], **(extra or {})})
     conn.commit()
+
+
+# PUBLIC_INTERFACE
+def carry_over(conn, from_key: str, from_hash: str, to_key: str, to_hash: str, note: str) -> int:
+    """Copy the agreements given to one version of something to another that is meant to be the same list (for example a proposal that became live)."""
+    mine = [r for r in _load(conn, from_key) if r["content_hash"] == from_hash and r["decision"] == "agree"]
+    latest: dict = {}
+    for r in mine:
+        latest[r["user_id"]] = r
+    if not latest:
+        return 0
+    copied = [{**r, "content_hash": to_hash, "comment": note, "at": db.now()} for r in latest.values()]
+    conn.execute("INSERT INTO app_settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                 (to_key, json.dumps(_load(conn, to_key) + copied, ensure_ascii=False)))
+    conn.commit()
+    return len(copied)
