@@ -190,3 +190,15 @@ button.link:hover:not(:disabled) { background: none; }
 .table-scroll { overflow-x: auto; }
 .audit-panel { margin-top: 1rem; padding-top: .5rem; border-top: 2px solid #1f6b4a; }
 .audit-panel h3 { display: flex; align-items: center; gap: .75rem; }
+
+/* Registration clock: live time from opening the form to saving, and the time per step */
+.reg-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; flex-wrap: wrap; }
+.reg-top .stepper { flex: 1 1 24rem; }
+.reg-clock { flex: 0 0 auto; min-width: 12.5rem; background: #fff; border: 1px solid #cfd9d4; border-radius: 8px; padding: .5rem .75rem; position: sticky; top: .5rem; z-index: 3; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+.reg-clock-total { display: flex; align-items: baseline; justify-content: space-between; gap: .75rem; border-bottom: 1px solid #e3eae6; padding-bottom: .3rem; }
+.reg-clock-total small { color: #64746c; }
+.reg-clock-total b { font-size: 1.6rem; font-variant-numeric: tabular-nums; color: #176d52; }
+.reg-clock.stopped .reg-clock-total b { color: #234d75; }
+.reg-clock ol { list-style: none; margin: .35rem 0 0; padding: 0; font-size: .82rem; }
+.reg-clock li { display: flex; justify-content: space-between; gap: .75rem; color: #64746c; padding: .05rem 0; font-variant-numeric: tabular-nums; }
+.reg-clock li.now { color: #176d52; font-weight: 700; }

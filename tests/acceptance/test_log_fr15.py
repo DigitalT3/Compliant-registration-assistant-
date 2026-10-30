@@ -132,3 +132,8 @@ def test_rating_samples_are_not_test_registrations(client):
                       "root_cause": "missed", "description": "Sample text.", "scenario": "rating-sample-S01"}).json()["id"]
     assert _log(client, cid) == {"applicable": False, "reason": "rating_sample"}
     assert {i["id"]: i["log"] for i in client.get("/api/audit/records", headers=ADMIN).json()["items"]}[cid] == "n/a"
+
+
+def test_the_screen_clock_setting_and_idle_cap_are_published(client):
+    cfg = client.get("/api/config").json()
+    assert cfg["ui"] == {"show_timer": True} and cfg["step_idle_cap_seconds"] == 600             # the clock follows the same cap as the logged time

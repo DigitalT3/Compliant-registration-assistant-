@@ -12,6 +12,8 @@ export const en: Record<string, string> = {
   "nav.about": "About",
   "user": "Demo user (not real login)",
   "language": "Language",
+  "clock.title": "Registration time",
+  "clock.final": "Registered in",
   "step.find_customer": "Find customer",
   "step.review_details": "Review details",
   "step.describe_complaint": "Describe complaint",

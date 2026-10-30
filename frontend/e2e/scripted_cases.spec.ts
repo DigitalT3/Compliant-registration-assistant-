@@ -1183,3 +1183,53 @@ test("T60 FR-15: a plain-form registration has a complete log too, without sugge
   await expect(log).toContainText("Plain form");
   await expect(log).toContainText("No suggestion was shown");
 });
+
+test("T61 live registration clock: visible from the start, ticks, shows the time per step, stops at save and matches the logged time", async ({ page, request }) => {
+  await openApp(page);
+  const clock = page.getByRole("timer");
+  await expect(clock).toBeVisible();                                                                 // there from the moment the form opens, before a customer is chosen
+  const secs = async () => { const [m, s] = (await clock.locator(".reg-clock-total b").innerText()).split(":").map(Number); return m * 60 + s; };
+  const first = await secs();
+  await page.waitForTimeout(2300);
+  expect(await secs()).toBeGreaterThanOrEqual(first + 2);                                            // it is running
+  await expect(clock.locator("li.now")).toContainText("Find customer");
+  await search(page, "100013");
+  await selectFirst(page);
+  await expect(clock.locator("li.now")).toContainText("Review details");                             // the current step moves with the registration
+  await expect(clock.locator("li", { hasText: "Find customer" })).not.toContainText("–");            // the finished step keeps its time
+  await expect(clock.locator("li", { hasText: "Classify" })).toContainText("–");                     // steps not reached yet show a dash
+  await describe(page, "The container at our depot was not emptied on Tuesday, it was missed again.", "en");
+  await expect(clock.locator("li.now")).toContainText("Classify");
+  await page.getByRole("button", { name: "Back", exact: true }).click();                             // going back keeps counting
+  await expect(clock.locator("li.now")).toContainText("Describe complaint");
+  await expect(clock.locator("li", { hasText: "Describe complaint" })).not.toContainText("–");
+  await page.getByRole("button", { name: "Next", exact: true }).click();
+  await page.waitForTimeout(500);
+  await next(page);
+  const before = await secs();
+  await save(page).click();
+  await saved(page);
+  const stopped = page.getByRole("timer");
+  await expect(stopped).toContainText("Registered in");                                              // the clock stays on the saved screen, stopped
+  const finalSecs = await (async () => { const [m, s] = (await stopped.locator(".reg-clock-total b").innerText()).split(":").map(Number); return m * 60 + s; })();
+  expect(finalSecs).toBeGreaterThanOrEqual(before);
+  await page.waitForTimeout(1500);
+  expect(await stopped.locator(".reg-clock-total b").innerText()).toBe(`${String(Math.floor(finalSecs / 60)).padStart(2, "0")}:${String(finalSecs % 60).padStart(2, "0")}`);   // no longer running
+
+  const id = (await page.getByRole("status").innerText()).match(/COM-\d+/)![0];                       // the same registration as the server logged it
+  const log = (await (await request.get(`${API}/api/audit/records/${id}`, { headers: ADMIN })).json()).log;
+  expect(Math.abs(log.total_seconds - finalSecs)).toBeLessThanOrEqual(3);
+  await page.getByRole("button", { name: "New registration" }).click();
+  await expect(page.getByRole("timer").locator("li.now")).toContainText("Find customer");              // a new registration starts a new clock
+});
+
+test("T62 the clock can be switched off by one setting", async ({ page }) => {
+  await page.route("**/api/config", async (route) => {
+    const response = await route.fetch();
+    const body = await response.json();
+    await route.fulfill({ response, json: { ...body, ui: { show_timer: false } } });
+  });
+  await openApp(page);
+  await expect(page.getByText("Find customer").first()).toBeVisible();
+  await expect(page.getByRole("timer")).toHaveCount(0);
+});

@@ -12,6 +12,8 @@ export const nl: Record<string, string> = {
   "nav.about": "Over",
   "user": "Demo-gebruiker (geen echte login)",
   "language": "Taal",
+  "clock.title": "Registratietijd",
+  "clock.final": "Geregistreerd in",
   "step.find_customer": "Klant zoeken",
   "step.review_details": "Gegevens controleren",
   "step.describe_complaint": "Klacht beschrijven",

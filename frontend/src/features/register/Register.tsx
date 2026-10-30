@@ -43,13 +43,14 @@ interface State {
   otherReason: string;
   repeat: any | null;
   sessionId: string | null;
+  visits: { step: string; from: number; to: number | null }[];   // every visit to a step, in ms: the on-screen clock (the server keeps its own log)
   openedAt: number | null;   // when the form was opened (ms): the registration clock starts here, not at the customer choice
   saved: any | null;
 }
 
 const init: State = {
   step: 0, q: "", search: null, customerId: null, ctx: null, fields: {}, text: "", textLang: "auto", summary: null, aiSummary: null,
-  summaryFailed: null, summaryBusy: false, analysedText: "", email: "", participant: "", scenarioTag: "", mode: "assistant", emailNote: null, decisions: {}, cls: null, clsFailed: null, rootCause: "", causeOrigin: "manual", otherReason: "", repeat: null, sessionId: null, openedAt: null, saved: null,
+  summaryFailed: null, summaryBusy: false, visits: [], analysedText: "", email: "", participant: "", scenarioTag: "", mode: "assistant", emailNote: null, decisions: {}, cls: null, clsFailed: null, rootCause: "", causeOrigin: "manual", otherReason: "", repeat: null, sessionId: null, openedAt: null, saved: null,
 };
 
 // Stepper state is kept in sessionStorage so a page reload does not lose the registration in progress.
@@ -96,6 +97,33 @@ export default function Register({ onViewHistory, meName, config }: { onViewHist
 
   // The registration clock starts when the form is opened (a new complaint), not when the customer is chosen.
   useEffect(() => { if (!s.sessionId && !s.openedAt) set({ openedAt: Date.now() }); }, [s.sessionId, s.openedAt]);   // eslint-disable-line react-hooks/exhaustive-deps
+
+  // The registration clock: from the moment the form opens to the moment it is saved. Each visit to a step counts at most the
+  // same idle cap the server uses, so a forgotten tab does not run on; going back adds the visits up.
+  const [now, setNow] = useState(Date.now());
+  const capMs = (config?.step_idle_cap_seconds || 600) * 1000;
+  const showTimer = config?.ui?.show_timer !== false;
+  useEffect(() => { if (s.openedAt && s.visits.length === 0 && !s.saved) set({ visits: [{ step: STEPS[0], from: s.openedAt, to: null }] }); }, [s.openedAt, s.visits.length, s.saved]);   // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (s.saved || s.visits.length === 0) return undefined;
+    const tick = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(tick);
+  }, [s.saved, s.visits.length]);
+  const closeLast = (v: State["visits"], at: number) => v.map((x, i) => (i === v.length - 1 && x.to === null ? { ...x, to: at } : x));
+  const enter = (step: string) => { const at = Date.now(); return [...closeLast(s.visits, at), { step, from: at, to: null }]; };
+  const seconds = (v: State["visits"][number]) => Math.min(Math.max(0, (v.to ?? now) - v.from), capMs) / 1000;
+  const perStep = Object.fromEntries(STEPS.map((k) => [k, s.visits.filter((v) => v.step === k).reduce((a, v) => a + seconds(v), 0)]));
+  const total = Object.values(perStep).reduce((a, b) => a + b, 0);
+  const mmss = (sec: number) => `${String(Math.floor(sec / 60)).padStart(2, "0")}:${String(Math.floor(sec % 60)).padStart(2, "0")}`;
+  const current = s.saved || s.visits.length === 0 ? null : s.visits[s.visits.length - 1].step;
+  const clock = showTimer && s.visits.length > 0 && (
+    <aside className={`reg-clock${s.saved ? " stopped" : ""}`} role="timer" aria-label={t("clock.title")} aria-live="off">
+      <div className="reg-clock-total"><small>{s.saved ? t("clock.final") : t("clock.title")}</small><b>{mmss(total)}</b></div>
+      <ol>{STEPS.map((k) => (
+        <li key={k} className={k === current ? "now" : undefined}><span>{t(`step.${k}`)}</span><span>{perStep[k] > 0 || k === current ? mmss(perStep[k]) : "–"}</span></li>
+      ))}</ol>
+    </aside>
+  );
 
   // An order picked after the summary was made (back, choose an order, forward): fill the empty container extra
   // from it without a new AI call, so edits already made to the summary stay.
@@ -155,7 +183,7 @@ export default function Register({ onViewHistory, meName, config }: { onViewHist
   const goto = (n: number) => {
     ev({ type: "step_completed", step: STEPS[s.step] });
     ev({ type: "step_entered", step: STEPS[n] });
-    set({ step: n });
+    set({ step: n, visits: enter(STEPS[n]) });
   };
 
   const setField = (k: string, v: string) => {
@@ -192,7 +220,7 @@ export default function Register({ onViewHistory, meName, config }: { onViewHist
     sessionStorage.setItem("cra.currentCustomer", c.customer_id);
     // The type sent above (chosen earlier, or guessed from the email) produced those defaults, so it has to stay with them.
     const kept = s.fields.complaint_type?.value ? { complaint_type: s.fields.complaint_type } : {};
-    set({ sessionId: sid, customerId: c.customer_id, ctx, fields: { ...pf.fields, ...kept }, step: 1, search: null });
+    set({ sessionId: sid, customerId: c.customer_id, ctx, fields: { ...pf.fields, ...kept }, step: 1, search: null, visits: enter(STEPS[1]) });
     // The session starts here, so the first step is closed and the second opened in the order the log must show.
     post(`/api/sessions/${sid}/events`, { type: "step_completed", step: "find_customer" })
       .then(() => post(`/api/sessions/${sid}/events`, { type: "step_entered", step: "review_details" })).catch(() => undefined);
@@ -359,16 +387,21 @@ export default function Register({ onViewHistory, meName, config }: { onViewHist
       // FR-13: the rule outcome is stored as is; the confirm/dispute decisions are stored with it, in the same save.
       repeat_decisions: Object.entries(s.decisions).map(([prior, d]) => ({ prior_complaint_id: prior, decision: d.decision, reason: d.reason.trim() || null })),
     });
-    set({ saved: r });
+    set({ saved: r, visits: closeLast(s.visits, Date.now()) });
   });
 
   if (s.saved)
     return (
       <section>
-        <div className="ok" role="status">{t("saved", { id: s.saved.id })}</div>
-        {s.saved.repeat.is_repeat && <p className="warn">{t("repeat.yes", { n: s.saved.repeat.count })}</p>}
-        <button onClick={onViewHistory}>{t("saved.view")}</button>{" "}
-        <button className="secondary" onClick={() => set({ reset: true })}>{t("new")}</button>
+        <div className="reg-top">
+          <div>
+            <div className="ok" role="status">{t("saved", { id: s.saved.id })}</div>
+            {s.saved.repeat.is_repeat && <p className="warn">{t("repeat.yes", { n: s.saved.repeat.count })}</p>}
+            <button onClick={onViewHistory}>{t("saved.view")}</button>{" "}
+            <button className="secondary" onClick={() => set({ reset: true })}>{t("new")}</button>
+          </div>
+          {clock}
+        </div>
       </section>
     );
 
@@ -392,9 +425,12 @@ export default function Register({ onViewHistory, meName, config }: { onViewHist
 
   return (
     <section>
-      <ol className="stepper" aria-label="steps">
-        {STEPS.map((k, i) => <li key={k} className={i === s.step ? "current" : i < s.step ? "done" : ""} aria-current={i === s.step ? "step" : undefined}>{i + 1}. {t(`step.${k}`)}</li>)}
-      </ol>
+      <div className="reg-top">
+        <ol className="stepper" aria-label="steps">
+          {STEPS.map((k, i) => <li key={k} className={i === s.step ? "current" : i < s.step ? "done" : ""} aria-current={i === s.step ? "step" : undefined}>{i + 1}. {t(`step.${k}`)}</li>)}
+        </ol>
+        {clock}
+      </div>
       {err && <div className="error" role="alert">{t("error")}: {err}</div>}
 
       {s.step === 0 && (

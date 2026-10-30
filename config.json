@@ -567,6 +567,9 @@
     "search": "phone",
     "email": "email"
   },
+  "ui": {
+    "show_timer": true
+  },
   "report": {
     "per_employee_min_n": 3,
     "show_employee_names": true

@@ -37,6 +37,7 @@ def _public(cfg: dict) -> dict:
             "classification": cfg["classification"], "summary": cfg["summary"], "repeat_rule": cfg["repeat_rule"],
             "defaults": cfg["defaults"], "field_options": cfg["field_options"], "baseline": cfg["baseline"], "provisional_meta": cfg["provisional_meta"],
             "roles": cfg["roles"], "demo_users": cfg["demo_users"], "synthetic_only": True,
+            "ui": cfg.get("ui", {}), "step_idle_cap_seconds": cfg["metrics"].get("step_idle_cap_seconds"),
             "ai": {"provider": ai["provider"], "model": ai["model"], "mock": ai["provider"] == "mock"}}
 
 
