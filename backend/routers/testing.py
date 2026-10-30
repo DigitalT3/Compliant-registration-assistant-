@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 from .. import db
 from ..auth import require
 from ..dbutil import audit, connection
-from ..services import metrics, scope, sessions as sessions_svc
+from ..services import disputes, metrics, scope, sessions as sessions_svc
 
 router = APIRouter(tags=["user-test"])
 
@@ -139,6 +139,17 @@ def export_suggestions(mode: str | None = Query(None, pattern="^(assistant|plain
     return _csv(["complaint_id", "session_id", "team", "user", "mode", "saved_at", "field", "origin", "outcome"],
                 [[i["complaint_id"], i["session_id"], i["team"], i["actor"], i["mode"], i["saved_at"], i["field"],
                   i["origin"], i["outcome"]] for i in items], "suggestions.csv")
+
+
+@router.get("/api/export/disputes.csv", summary="Confirmed and disputed repeat links, for review by the rule owner")
+def export_disputes(user: dict = Depends(require("analytics"))):
+    """One row per decision: when, who, the complaint, the earlier complaint, the decision and the reason."""
+    with connection() as conn:
+        items = disputes.listing(conn)
+    return _csv(["at", "complaint_id", "customer", "site", "cause", "earlier_complaint_id", "earlier_date", "earlier_cause", "earlier_status",
+                 "decision", "reason", "by", "rule_version"],
+                [[i["at"], i["complaint_id"], i["customer_name"], i["site_name"], i["cause"], i["prior_complaint_id"], (i["prior_created"] or "")[:10],
+                  i["prior_cause"], i["prior_status"], i["decision"], i["reason"], i["actor_name"], i["rule_version"]] for i in items], "disputes.csv")
 
 
 @router.get("/api/export/employees.csv", summary="How each employee registers, for Power BI")

@@ -354,12 +354,9 @@ export default function Register({ onViewHistory, meName, config }: { onViewHist
       summary_meta: s.summary ? { mock: !!s.summary.mock } : null, session_id: s.sessionId,
       priority: val("priority") || null, owner_team: val("owner_team") || null, field_provenance: finalProvenance(),
       registration_date: val("registration_date") || null, registering_user: val("registering_user") || null,
+      // FR-13: the rule outcome is stored as is; the confirm/dispute decisions are stored with it, in the same save.
+      repeat_decisions: Object.entries(s.decisions).map(([prior, d]) => ({ prior_complaint_id: prior, decision: d.decision, reason: d.reason.trim() || null })),
     });
-    // FR-13: the rule outcome is stored as is; the user's confirm/dispute decisions are stored next to it.
-    for (const [prior, d] of Object.entries(s.decisions)) {
-      await post("/api/repeat-disputes", { complaint_id: r.id, prior_complaint_id: prior, decision: d.decision,
-        reason: d.reason.trim() || t("repeat.confirmed_default") }).catch(() => undefined);
-    }
     set({ saved: r });
   });
 

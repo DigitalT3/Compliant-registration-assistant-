@@ -23,9 +23,10 @@ from backend.settings import get_config
 
 ROOT = Path(__file__).resolve().parents[1]
 TAG = "rating-sample-"
-# (customer, site) per case: the seeded customers, spread over a few of them
-PLACES = [("C009", "C009-S1"), ("C009", "C009-S2"), ("C004", "C004-S1"), ("C006", "C006-S1"), ("C011", "C011-S1"),
-          ("C011", "C011-S2"), ("C014", "C014-S1"), ("C018", "C018-S1"), ("C020", "C020-S1"), ("C025", "C025-S2")]
+# (customer, site) per case. None of these customers appears in the seeded repeat scenarios (backend/seed_data/scenarios.json):
+# a sample complaint saved there would become repeat history and change the answers the repeat rule must give (FR-12).
+PLACES = [("C005", "C005-S1"), ("C005", "C005-S2"), ("C008", "C008-S1"), ("C008", "C008-S2"), ("C011", "C011-S1"),
+          ("C011", "C011-S2"), ("C012", "C012-S1"), ("C017", "C017-S1"), ("C018", "C018-S1"), ("C019", "C019-S2")]
 
 
 def create_account(conn, email: str, name: str, out: Path) -> str:
@@ -63,8 +64,14 @@ def seed_complaints(conn) -> None:
     user, cfg, made = {"id": demo["id"], "name": demo["name"], "role": "employee"}, get_config(), 0
     for case, (customer, site) in zip(cases, PLACES):
         scenario = TAG + case["id"]
-        if conn.execute("SELECT 1 FROM complaints WHERE scenario=?", (scenario,)).fetchone():
-            print(f"  {case['id']}: already there")
+        there = conn.execute("SELECT id, customer_id, site_id FROM complaints WHERE scenario=?", (scenario,)).fetchone()
+        if there:
+            if (there["customer_id"], there["site_id"]) != (customer, site):       # an earlier version placed it on a scenario customer
+                conn.execute("UPDATE complaints SET customer_id=?, site_id=?, contract_id=NULL, order_id=NULL, container=NULL WHERE id=?", (customer, site, there["id"]))
+                conn.commit()
+                print(f"  {case['id']}: {there['id']} moved to {customer}/{site}")
+            else:
+                print(f"  {case['id']}: already there")
             continue
         site_name = conn.execute("SELECT name FROM sites WHERE id=?", (site,)).fetchone()["name"]
         out = ai.run(conn, "analyze", {"text": case["text"], "language": None, "site_name": site_name, "complaint_type": case["type"],

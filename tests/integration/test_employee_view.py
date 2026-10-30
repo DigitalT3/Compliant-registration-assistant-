@@ -72,7 +72,7 @@ def test_names_can_be_hidden(client, monkeypatch):
 
 
 def test_repeat_decisions_are_counted_per_person(client):
-    cid, _ = register(client, headers=A1, field_provenance=KEPT)
+    cid, _ = register(client, headers=A1, field_provenance=KEPT, customer_id="C001", site_id="C001-S1")     # the rule links this one to COM-SEED-1
     r = client.post("/api/repeat-disputes", headers=A1, json={"complaint_id": cid, "prior_complaint_id": "COM-SEED-1",
                                                               "decision": "reject", "reason": "Different container"})
     assert r.status_code == 201

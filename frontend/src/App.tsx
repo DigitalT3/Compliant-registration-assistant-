@@ -566,9 +566,31 @@ function Evaluation({ config }: { config: any }) {
       <UserTestData config={config} onChanged={load} />
       <article className="card">
         <h3>{t("eval.disputes")}</h3>
-        {disputes.length ? <ul>{disputes.map((item) => <li key={item.id}>{item.complaint_id}: {item.decision} — {item.reason}</li>)}</ul> : <p className="empty">{t("eval.none")}</p>}
+        <DisputeTable items={disputes} config={config} />
       </article>
     </section>
+  );
+}
+
+/** The confirm / dispute decisions on repeat links, for review by the rule owner (FR-13). */
+function DisputeTable({ items, config }: { items: any[]; config: any }) {
+  const { t, lang } = useI18n();
+  const cause = (id: string) => (config.root_causes || []).find((c: any) => c.id === id)?.[lang] || id || "–";
+  if (!items.length) return <p className="empty">{t("eval.none")}</p>;
+  return (
+    <table>
+      <thead><tr><th>{t("ds.when")}</th><th>{t("ds.complaint")}</th><th>{t("ds.earlier")}</th><th>{t("ds.decision")}</th><th>{t("ds.reason")}</th><th>{t("ds.by")}</th></tr></thead>
+      <tbody>{items.map((d) => (
+        <tr key={d.id}>
+          <td>{String(d.at).slice(0, 10)}</td>
+          <td><b>{d.complaint_id}</b><br /><small>{[d.customer_name, d.site_name, cause(d.cause)].filter(Boolean).join(" · ")}</small></td>
+          <td><b>{d.prior_complaint_id}</b><br /><small>{[String(d.prior_created || "").slice(0, 10), cause(d.prior_cause), d.prior_status].filter(Boolean).join(" · ")}</small></td>
+          <td>{d.decision === "reject" ? t("repeat.reject") : t("repeat.confirm")}</td>
+          <td>{d.reason}</td>
+          <td>{d.actor_name || d.actor}<br /><small>{d.rule_version}</small></td>
+        </tr>
+      ))}</tbody>
+    </table>
   );
 }
 
@@ -640,7 +662,9 @@ function Configuration({ config, canSign, onUpdated }: { config: any; canSign: b
       )}
       <article className="card">
         <h3>{t("eval.disputes")}</h3>
-        {disputes.length ? <ul>{disputes.map((item) => <li key={item.id}>{item.complaint_id}: {item.decision} — {item.reason}</li>)}</ul> : <p className="empty">{t("eval.none")}</p>}
+        <p className="muted">{t("ds.note")}</p>
+        <button className="secondary" onClick={() => download("/api/export/disputes.csv", "disputes.csv").catch((c) => setError(String(c.message || c)))}>{t("ds.export")}</button>
+        <DisputeTable items={disputes} config={config} />
       </article>
       <h3>{t("rule.edit")}</h3>
       <form className="card form-grid" onSubmit={submit}>

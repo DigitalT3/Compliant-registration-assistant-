@@ -1069,3 +1069,22 @@ test("T56 FR-09: the suggested type and the top causes with a one-line reason ar
   await expect(page.getByRole("heading", { name: /Summary/ })).toBeVisible();                           // the summary fills in behind the suggestion
   await expect(page.getByRole("button", { name: "Next", exact: true })).toBeEnabled();
 });
+
+test("T57 FR-13: the rule owner reviews who disputed which repeat link and why", async ({ page, request }) => {
+  const emp = { "X-Demo-User": "demo.emp.a1" };
+  const saved = await request.post(`${API}/api/complaints`, { headers: emp, data: {
+    customer_id: "C006", site_id: "C006-S1", root_cause: "late", channel: "phone", complaint_type: "service", description: "Late again.",
+    repeat_decisions: [{ prior_complaint_id: "COM-SEED-6", decision: "confirm" }, { prior_complaint_id: "COM-SEED-7", decision: "reject", reason: "Different container, T57" }] } });
+  expect(saved.ok()).toBe(true);
+  await openApp(page, "demo.admin");                                                                 // an administrator may edit the rule and sees what the rule owner sees
+  await page.getByRole("button", { name: "Configuration" }).click();
+  const card = page.locator("article.card", { hasText: "Repeat disputes" });
+  await expect(card.locator("th", { hasText: "Linked earlier complaint" })).toBeVisible();
+  const row = card.getByRole("row", { name: /COM-SEED-7/ }).first();
+  await expect(row).toContainText("Not a repeat");
+  await expect(row).toContainText("Different container, T57");
+  await expect(row).toContainText("Demo Employee A1");                                              // who decided
+  await expect(row).toContainText("draft-juul-v1");                                                  // under which rule version
+  await expect(card.getByRole("row", { name: /COM-SEED-6/ }).first()).toContainText("Confirm repeat");
+  await expect(card.getByRole("button", { name: "Export disputes CSV" })).toBeVisible();
+});

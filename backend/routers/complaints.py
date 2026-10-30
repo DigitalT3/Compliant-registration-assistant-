@@ -56,6 +56,13 @@ class RepeatIn(BaseModel):
     session_id: str | None = None
 
 
+class RepeatDecisionIn(BaseModel):
+    """The employee's decision on one earlier complaint the rule linked: confirm it, or dispute it with a reason."""
+    prior_complaint_id: str
+    decision: str = Field(..., pattern="^(confirm|reject)$")
+    reason: str | None = Field(None, max_length=500)
+
+
 class ComplaintIn(BaseModel):
     """Complaint to save (PoC database only)."""
     customer_id: str
@@ -75,6 +82,7 @@ class ComplaintIn(BaseModel):
     repeat_input_hash: str | None = None
     priority: str | None = Field(None, max_length=30)
     owner_team: str | None = Field(None, max_length=40)
+    repeat_decisions: list[RepeatDecisionIn] | None = Field(None, description="Confirm / dispute decisions on the linked earlier complaints, stored with the complaint")
     registration_date: str | None = Field(None, max_length=10, description="YYYY-MM-DD; today when left out")
     registering_user: str | None = Field(None, max_length=64, description="A colleague's user id when registering on their behalf")
     field_provenance: dict[str, str] | None = Field(

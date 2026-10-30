@@ -73,3 +73,10 @@ Added rows carry `source='poc_added'`, `created_by` and `created_at`, and an aud
 
 ## Summary rating (FR-08)
 `GET /api/evaluations/sample` (evaluate permission): saved PoC complaints this rater has not rated yet, with the text, the summary (what, where, when, impact, `extras`) and no cause or suggestion. `POST /api/evaluations` `{complaint_id, usable, expert_cause?}`: `usable` is required; the cause is optional. Only the latest rating per person per complaint counts in `GET /api/evaluations` and in the dashboard target `summary_usable`. See `docs/SUMMARY_RATING.md`.
+
+## Repeat complaints: decisions and review (FR-12, FR-13)
+- `POST /api/complaints/check-repeat` applies the active repeat rule before saving and returns the linked earlier complaints (id, date, status, cause, why they matched).
+- `POST /api/complaints` accepts `repeat_decisions: [{prior_complaint_id, decision: confirm|reject, reason?}]`. They are validated against the earlier complaints the rule links right now (an unlinked or repeated id is refused with `invalid_repeat_decision`, a dispute without a reason of at least 3 characters with `reason_required`) and stored in the same transaction as the complaint, next to the unchanged rule result. A confirmation without a reason is stored as "Confirmed by user".
+- `POST /api/repeat-disputes` records a later decision. Only the person who registered the complaint (or an administrator) can decide, and only about a linked earlier complaint.
+- `GET /api/repeat-disputes` lists decisions with who, when, both complaints, the reason, the rule version and the original evidence. `GET /api/export/disputes.csv` (analytics permission; the rule owner has it) exports the same for review.
+- `python -m scripts.repeat_check --url ... --email ... [--save]` checks the eleven seeded scenarios and the decision round trip with a real account.

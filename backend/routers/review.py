@@ -9,7 +9,7 @@ from .. import db
 from ..auth import require
 from ..dbutil import audit, connection
 from ..errors import ApiError
-from ..services import scope
+from ..services import disputes, scope
 
 router = APIRouter(tags=["review"])
 
@@ -17,9 +17,9 @@ router = APIRouter(tags=["review"])
 class DisputeIn(BaseModel):
     """Employee decision on a repeat warning; the rule outcome is stored separately."""
     complaint_id: str
-    prior_complaint_id: str | None = None
+    prior_complaint_id: str
     decision: str = Field(..., pattern="^(confirm|reject)$")
-    reason: str = Field(..., min_length=3, max_length=500)
+    reason: str | None = Field(None, max_length=500)
 
 
 class EvaluationIn(BaseModel):
@@ -32,27 +32,32 @@ class EvaluationIn(BaseModel):
 
 @router.post("/api/repeat-disputes", status_code=201, summary="Record a repeat dispute")
 def create_dispute(body: DisputeIn, user: dict = Depends(require("register"))):
-    """Store the dispute with the original rule evidence untouched in ``repeat_checks``."""
+    """Store the decision with the original rule evidence untouched in ``repeat_checks``.
+
+    Only the person who registered the complaint (or an administrator) can decide, and only about an earlier complaint
+    the rule actually linked to it. A dispute needs a reason of at least 3 characters.
+    """
     with connection() as conn:
-        chk = conn.execute("SELECT id,rule_version,explanation FROM repeat_checks WHERE complaint_id=? ORDER BY id DESC LIMIT 1",
-                           (body.complaint_id,)).fetchone()
+        owner = conn.execute("SELECT registering_user FROM complaints WHERE id=?", (body.complaint_id,)).fetchone()
+        if not owner:
+            raise ApiError(404, "complaint_not_found", "Complaint not found.")
+        if owner["registering_user"] != user["id"] and user["role"] != "admin":
+            raise ApiError(403, "not_your_complaint", "Only the person who registered the complaint can confirm or dispute its repeat links.")
+        chk = conn.execute("SELECT matching_ids FROM repeat_checks WHERE complaint_id=? ORDER BY id DESC LIMIT 1", (body.complaint_id,)).fetchone()
         if not chk:
             raise ApiError(404, "repeat_check_not_found", "No stored repeat check for this complaint.")
-        conn.execute("INSERT INTO repeat_disputes(repeat_check_id,complaint_id,prior_complaint_id,decision,reason,actor,"
-                     "rule_version,evidence,at) VALUES(?,?,?,?,?,?,?,?,?)",
-                     (chk["id"], body.complaint_id, body.prior_complaint_id, body.decision, body.reason, user["id"],
-                      chk["rule_version"], chk["explanation"], db.now()))
-        audit(conn, user["id"], "repeat_match_disputed", body.model_dump())
+        if body.prior_complaint_id not in json.loads(chk["matching_ids"] or "[]"):
+            raise ApiError(422, "not_a_linked_complaint", "That complaint is not one of the earlier complaints the rule linked.")
+        disputes.insert(conn, user["id"], body.complaint_id, body.prior_complaint_id, body.decision, disputes.clean(body.decision, body.reason))
         conn.commit()
         return {"recorded": True, "rule_outcome_unchanged": True}
 
 
 @router.get("/api/repeat-disputes", summary="List repeat disputes")
 def list_disputes(user: dict = Depends(require("read"))):
-    """List disputes with the original rule evidence."""
+    """List decisions with who, when, both complaints and the original rule evidence."""
     with connection() as conn:
-        return {"items": [dict(r, evidence=json.loads(r["evidence"] or "{}"))
-                          for r in conn.execute("SELECT * FROM repeat_disputes ORDER BY id DESC")]}
+        return {"items": [dict(r, evidence=json.loads(r["evidence"] or "{}")) for r in disputes.listing(conn)]}
 
 
 @router.post("/api/evaluations", status_code=201, summary="Rate a summary / label the expert cause")

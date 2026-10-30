@@ -11,6 +11,7 @@ from ..dbutil import audit
 from ..errors import ApiError
 from ..settings import causes_by_id, get_config
 from . import accounts as accounts_svc
+from . import disputes as disputes_svc
 from . import prefill as prefill_svc
 from . import repeat as repeat_svc
 from . import sessions as sessions_svc
@@ -85,6 +86,23 @@ def _registration(conn, p: dict, user: dict) -> tuple[str, str]:
     return who, d.isoformat()
 
 
+def _decisions(conn, p: dict, cfg: dict) -> list:
+    """The employee's confirm/dispute decisions, checked against the earlier complaints the rule links right now."""
+    raw = p.get("repeat_decisions") or []
+    if not raw:
+        return []
+    found = {m["id"] for m in repeat_svc.evaluate_repeat(cfg["repeat_rule"], p, load_history(conn, p["customer_id"]),
+                                                          db.reference_now(), causes_by_id(cfg))["matches"]}
+    out, seen = [], set()
+    for d in raw:
+        prior = d["prior_complaint_id"]
+        if prior not in found or prior in seen:
+            raise ApiError(422, "invalid_repeat_decision", f"{prior} is not an earlier complaint the rule links to this one (or is listed twice).")
+        seen.add(prior)
+        out.append((prior, d["decision"], disputes_svc.clean(d["decision"], d.get("reason"))))
+    return out
+
+
 def _form_fields(conn, p: dict, cfg: dict) -> dict:
     """Resolve the defaulted form fields server-side: explicit value, else the type default.
 
@@ -137,6 +155,7 @@ def create(conn, p: dict, user: dict) -> dict:
             raise ApiError(409, "stale_repeat_check", "Repeat check is out of date; run it again.")
     extra = _form_fields(conn, p, cfg)   # validates priority/owner_team before any write
     who, reg_day = _registration(conn, p, user)
+    decisions = _decisions(conn, p, cfg)                  # refused before anything is written
     try:
         conn.execute("BEGIN IMMEDIATE")
         cid, stamp = _next_id(conn), db.reference_now().isoformat()
@@ -163,6 +182,8 @@ def create(conn, p: dict, user: dict) -> dict:
         conn.execute(f"INSERT INTO complaints({','.join(row)}) VALUES({','.join('?' * len(row))})", list(row.values()))
         _record_final_provenance(conn, session, p, cfg)
         _insert_repeat_check(conn, p.get("session_id"), cid, result)
+        for prior, decision, reason in decisions:                   # stored in the same transaction as the complaint
+            disputes_svc.insert(conn, user["id"], cid, prior, decision, reason)
         if session:
             _record_outcome(conn, session["id"], p)
             conn.execute("INSERT INTO step_events(session_id,step,event_type,at) VALUES(?,?,?,?)",

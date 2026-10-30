@@ -123,9 +123,9 @@ def test_session_analytics(client):
 
 
 def test_disputes_extract_eval(client):
-    cid = client.post("/api/complaints", headers=EMP, json={**BASE, "root_cause": "missed"}).json()["id"]
+    cid = client.post("/api/complaints", headers=EMP, json={**BASE, "customer_id": "C001", "site_id": "C001-S1", "root_cause": "missed"}).json()["id"]
     d = client.post("/api/repeat-disputes", headers=EMP,
-                    json={"complaint_id": cid, "decision": "reject", "reason": "different issue"})
+                    json={"complaint_id": cid, "prior_complaint_id": "COM-SEED-1", "decision": "reject", "reason": "different issue"})
     assert d.status_code == 201
     assert client.get("/api/repeat-disputes", headers=EMP).json()["items"][0]["evidence"]
     x = client.post("/api/complaints/extract", headers=EMP,
