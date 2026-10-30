@@ -13,6 +13,7 @@ from ..errors import ApiError
 from ..settings import get_config
 
 KEY = "repeat_rule_signoff"
+OWNER_ROLE = "rule_owner"
 PARAMS = ("enabled", "lookback_days", "match_keys", "cause_mode", "eligible_statuses", "missing_values")
 
 
@@ -37,11 +38,11 @@ def status(conn, cfg: dict | None = None) -> dict:
     latest: dict = {}
     for r in _load(conn):
         latest[r["user_id"]] = r
-    now = [r for r in latest.values() if r["content_hash"] == here]
+    now = [r for r in latest.values() if r["content_hash"] == here and r.get("role") == OWNER_ROLE]     # an administrator may sign too, but it is not Juul's sign-off
     signed = [r for r in now if r["decision"] == "sign_off"]
     state = "changes_requested" if any(r["decision"] == "changes" for r in now) else "signed_off" if len(signed) >= required else "draft"
     reviews = sorted(({"user_id": r["user_id"], "name": r["name"], "decision": r["decision"], "comment": r.get("comment"),
-                       "at": r["at"], "current": r["content_hash"] == here, "rule_version": r.get("rule_version")}
+                       "at": r["at"], "current": r["content_hash"] == here, "rule_version": r.get("rule_version"), "role": r.get("role"), "counts": r.get("role") == OWNER_ROLE}
                       for r in latest.values()), key=lambda r: r["at"], reverse=True)
     return {"state": state, "required": required, "signed": len(signed), "content_hash": here,
             "rule_version": cfg["repeat_rule"].get("version"), "reviews": reviews,
@@ -58,7 +59,7 @@ def review(conn, user: dict, decision: str, comment: str | None) -> dict:
     if decision == "changes" and not comment:
         raise ApiError(422, "comment_required", "Say what should change.")
     cfg = get_config()
-    entry = {"user_id": user["id"], "name": user["name"], "decision": decision, "comment": comment[:500] or None,
+    entry = {"user_id": user["id"], "name": user["name"], "role": user.get("role"), "decision": decision, "comment": comment[:500] or None,
              "at": db.now(), "content_hash": content_hash(cfg), "rule_version": cfg["repeat_rule"].get("version")}
     conn.execute("INSERT INTO app_settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
                  (KEY, json.dumps(_load(conn) + [entry], ensure_ascii=False)))

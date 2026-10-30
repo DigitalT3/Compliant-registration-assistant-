@@ -68,6 +68,6 @@ def test_every_seeded_and_saved_complaint_fills_the_required_target_fields(clien
 def test_the_endpoint_describes_the_mapping_and_says_it_is_one_to_one(client):
     m = client.get("/api/field-mapping", headers=EMP).json()
     assert m["one_to_one"] is True and m["problems"] == [] and m["validated"] is False
-    assert len(m["fields"]) + len(m["not_mapped"]) == 30 and len(m["fields"]) == 23 and set(m["not_mapped"]) == {"created", "session_id", "payload", "summary_meta", "scenario", "is_poc", "is_seed"}
+    assert len(m["fields"]) + len(m["not_mapped"]) == 31 and len(m["fields"]) == 23 and set(m["not_mapped"]) == {"created", "session_id", "payload", "summary_meta", "scenario", "is_poc", "is_seed", "creator_role"}
     assert client.get("/api/complaints/NOPE/target", headers=EMP).status_code == 404
     assert client.get("/api/field-mapping").status_code == 401

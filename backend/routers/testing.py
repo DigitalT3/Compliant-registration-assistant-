@@ -2,6 +2,7 @@
 import csv
 import io
 import json
+from datetime import timedelta
 
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import Response
@@ -151,6 +152,20 @@ def export_disputes(user: dict = Depends(require("analytics"))):
                 [[i["at"], i["complaint_id"], i["customer_name"], i["site_name"], i["cause"], i["prior_complaint_id"], (i["prior_created"] or "")[:10],
                   i["prior_cause"], i["prior_status"], i["decision"], i["reason"], i["actor_name"], i["rule_version"],
                   i["reviewed_at"], i["reviewed_by_name"], i["review_note"]] for i in items], "disputes.csv")
+
+
+@router.get("/api/export/complaints-extract.csv", summary="The 12-month complaint extract in the shape the root-cause analysis needs")
+def export_extract(months: int = Query(12, ge=1, le=36), include_seed: bool = True, user: dict = Depends(require("analytics"))):
+    """Type, cause, free text, timestamps, creator role and status of every complaint of the last ``months`` months (PRD section 10)."""
+    since = (db.reference_now() - timedelta(days=round(months * 30.4375))).isoformat()
+    with connection() as conn:
+        rows = conn.execute("SELECT id, complaint_type, root_cause, root_cause_category, original_text, other_reason, created, registration_date, creator_role, "
+                            "status, language, channel, is_seed FROM complaints WHERE created>=?" + ("" if include_seed else " AND is_seed=0") + " ORDER BY created, id", (since,)).fetchall()
+        audit(conn, user["id"], "extract_exported", {"months": months, "rows": len(rows), "include_seed": include_seed})
+        conn.commit()
+    return _csv(["complaint_id", "type", "cause", "cause_category", "free_text", "other_reason", "created", "registration_date", "creator_role", "status", "language", "channel", "synthetic"],
+                [[r["id"], r["complaint_type"], r["root_cause"], r["root_cause_category"], r["original_text"], r["other_reason"], r["created"], r["registration_date"],
+                  r["creator_role"], r["status"], r["language"], r["channel"], "yes" if r["is_seed"] else "no"] for r in rows], "complaints-extract.csv")
 
 
 @router.get("/api/export/employees.csv", summary="How each employee registers, for Power BI")

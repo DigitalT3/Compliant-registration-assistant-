@@ -41,7 +41,7 @@ def test_the_guard_catches_each_way_in(tmp_path, monkeypatch):
 def test_only_the_known_credentials_exist():
     store, ai, app = guard.ENV_STORE, guard.ENV_AI, guard.ENV_APP
     assert not (store & ai or store & app or ai & app)
-    assert store == {"POC_DB", "POC_DB_PATH", "POC_PG_SCHEMA", "DATABASE_URL"}                    # the PoC's own store, nothing else
+    assert store == {"POC_DB", "POC_DB_PATH", "POC_PG_SCHEMA", "POC_ALLOW_LIVE_RESET", "DATABASE_URL"}                    # the PoC's own store, nothing else
     secrets = {k for k in guard.ALLOWED_ENV if any(w in k for w in ("PASSWORD", "SECRET", "KEY", "TOKEN", "URL"))}
     assert secrets == {"DATABASE_URL", "AI_BASE_URL", "AI_API_KEY", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN", "AUTH_SECRET", "POC_ADMIN_PASSWORD", "CHECK_PASSWORD", "CHECK_RATER_PASSWORD"}
 

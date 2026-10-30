@@ -848,10 +848,9 @@ test("T50 the process owners agree the cause list: three real accounts, the last
   await page.getByRole("button", { name: "About" }).click();                                      // the status is also on the About page
   await expect(page.getByText(/Agreed: 3 of 3 process owners/)).toBeVisible();
 
-  await openApp(page, "demo.admin");                                                              // an administrator can read it but not agree for the owners
+  await openApp(page, "demo.admin");                                                              // an administrator can do everything the other roles can, so can agree too
   await page.getByRole("button", { name: "Root causes" }).click();
-  await expect(page.getByLabel("Agreement on this list").getByText("Only the process owners")).toBeVisible();
-  await expect(page.getByRole("button", { name: "I agree with this list" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "I agree with this list" })).toHaveCount(1);
 });
 
 test("T51 the rule owner signs off the repeat rule and the business owner records go/no-go: real accounts", async ({ page, request }) => {
@@ -895,10 +894,9 @@ test("T51 the rule owner signs off the repeat rule and the business owner record
   await expect(page.getByText("Go with conditions · ")).toBeVisible();
   await expect(page.getByText("Go once the cause list is agreed")).toBeVisible();
 
-  await openApp(page, "demo.admin");                                                              // an administrator sees the readout but cannot decide
+  await openApp(page, "demo.admin");                                                              // an administrator can also record the decision
   await page.getByRole("button", { name: "Readout" }).click();
-  await expect(page.getByText("Only the business owner")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Record decision" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Record decision" })).toHaveCount(1);
 });
 
 test("T52 FR-04: every prefillable field is filled after a customer-number match, and each one can be edited", async ({ page }) => {
@@ -1294,7 +1292,7 @@ test("T65 FR-18/19/20 root-cause analysis screen: themes with coverage, a propos
   await page.getByRole("button", { name: "Propose a list" }).click();
   await expect(page.getByTestId("rca-state")).toHaveText("draft");
   await expect(page.getByText("Agreed by 0 of 3")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Agree to this list" })).toHaveCount(0);            // the administrator is not a process owner
+  await expect(page.getByRole("button", { name: "Agree to this list" })).toHaveCount(1);            // the administrator can do everything the other roles can
   await expect(page.getByRole("button", { name: "Re-label with the current list" })).toBeDisabled();   // no expert labels yet
   await openApp(page, "demo.evaluator");
   await page.getByRole("button", { name: "Root-cause analysis" }).click();

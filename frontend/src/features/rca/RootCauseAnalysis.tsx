@@ -44,7 +44,7 @@ export default function RootCauseAnalysis({ canRun, canReview }: { canRun: boole
           <p><strong>{pr.version}</strong> – {pr.n_categories} {t("rca.categories")} ({t("rca.today")} {pr.current_size}). {t("rca.agreed_by", { n: pr.review.agreed, m: pr.review.required })} <strong data-testid="rca-state">{pr.review.state}</strong></p>
           <table><thead><tr><th>{t("rca.col.category")}</th><th>{t("rca.col.definition")}</th><th>{t("rca.col.examples")}</th></tr></thead>
             <tbody>{pr.categories.map((c: any) => <tr key={c.id}><td>{c.name_en}<br /><small>{c.name_nl}</small></td><td>{c.definition}</td><td>{c.examples.join("; ")}</td></tr>)}</tbody></table>
-          <ul>{pr.review.reviews.map((r: any) => <li key={r.user_id || r.name}>{r.name}: {r.decision}{r.comment ? ` – ${r.comment}` : ""}</li>)}</ul>
+          <ul>{pr.review.reviews.map((r: any) => <li key={r.user_id || r.name}>{r.name}: {r.decision}{r.counts === false ? ` (${t("review.no_count")})` : ""}{r.comment ? ` – ${r.comment}` : ""}</li>)}</ul>
           {canReview && <div>
             <input aria-label={t("rca.comment")} placeholder={t("rca.comment")} value={comment} onChange={(e) => setComment(e.target.value)} />
             <button disabled={!!busy} onClick={() => run("agree", "/api/rca/proposal/review", { decision: "agree", comment: comment || null })}>{t("rca.agree")}</button>{" "}

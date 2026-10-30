@@ -99,7 +99,7 @@ def test_whole_flow_through_the_api(client):
     prop = client.post("/api/rca/proposal", headers=ADMIN, json={"max_categories": 8}).json()
     assert prop["review"]["state"] == "draft" and prop["version"].startswith("v1-proposal-")
     kwafie, naomi, maikel = owners(client)
-    assert client.post("/api/rca/proposal/review", headers=ADMIN, json={"decision": "agree"}).status_code == 403
+    assert client.post("/api/rca/proposal/review", headers=EMP, json={"decision": "agree"}).status_code == 403
     for h in (kwafie, naomi):
         client.post("/api/rca/proposal/review", headers=h, json={"decision": "agree"})
     assert client.get("/api/rca", headers=ADMIN).json()["proposal"]["review"]["agreed"] == 2

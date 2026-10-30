@@ -170,7 +170,7 @@ def create(conn, p: dict, user: dict) -> dict:
             "contract_id": p.get("contract_id"), "order_id": p.get("order_id"), "root_cause": p["root_cause"],
             "created": stamp, "status": extra["status"], "session_id": p.get("session_id"),
             "payload": json.dumps(payload), "channel": p["channel"], "registration_date": reg_day,
-            "registering_user": who, "original_text": p["description"], "language": p.get("language"),
+            "registering_user": who, "creator_role": user.get("role"), "original_text": p["description"], "language": p.get("language"),
             "summary_json": json.dumps(p.get("summary")), "summary_meta": json.dumps(p.get("summary_meta")),
             "complaint_type": p["complaint_type"], "other_reason": other_reason or None,
             "rule_version": cfg["repeat_rule"]["version"], "taxonomy_version": cfg["taxonomy_version"],

@@ -326,7 +326,10 @@
       "readout",
       "rca_view",
       "rca_run",
-      "review_disputes"
+      "review_disputes",
+      "decide",
+      "review_taxonomy",
+      "sign_off_rule"
     ],
     "evaluator": [
       "read",

@@ -12,6 +12,7 @@ from ..settings import get_config
 from . import agreement
 
 KEY = "taxonomy_review"
+OWNER_ROLES = ("evaluator",)                    # the process owners; an administrator may review too but does not count
 DECISIONS = {"agree", "changes"}
 
 
@@ -30,7 +31,7 @@ def content_hash(cfg: dict | None = None) -> str:
 def status(conn, cfg: dict | None = None) -> dict:
     """The state of the list: ``draft``, ``changes_requested`` or ``agreed`` (needs ``required`` agreements, no open change request)."""
     cfg = cfg or get_config()
-    out = agreement.status(conn, KEY, content_hash(cfg), int(cfg.get("taxonomy_review", {}).get("required_agreements", 3)))
+    out = agreement.status(conn, KEY, content_hash(cfg), int(cfg.get("taxonomy_review", {}).get("required_agreements", 3)), OWNER_ROLES)
     return {**out, "taxonomy_version": cfg["taxonomy_version"]}
 
 

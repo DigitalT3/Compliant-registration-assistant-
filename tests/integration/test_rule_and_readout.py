@@ -15,7 +15,7 @@ NEW_RULE = {"enabled": True, "lookback_days": 30, "match_keys": ["customer_id"],
 def test_the_rule_starts_as_a_draft_and_only_its_owner_signs_it_off(client):
     assert client.get(RULE).json()["signoff"]["state"] == "draft"
     juul = signed_in(client, "juul@example.nl", None, role="rule_owner")
-    for headers in (EMP, LEAD, ADMIN):                                                    # not even an administrator
+    for headers in (EMP, LEAD):                                                           # the administrator can do everything the other roles can
         assert client.post(RULE + "/signoff", headers=headers, json={"decision": "sign_off"}).status_code == 403
     assert client.post(RULE + "/signoff", headers=juul, json={"decision": "changes"}).json()["error"]["code"] == "comment_required"
     done = client.post(RULE + "/signoff", headers=juul, json={"decision": "sign_off"}).json()
@@ -70,7 +70,7 @@ def test_the_readout_shows_evidence_and_open_conditions_to_the_right_roles(clien
 def test_only_the_business_owner_records_the_decision_with_a_reason(client):
     glenn = signed_in(client, "glenn@example.nl", None, role="business_owner")
     body = {"decision": "conditional", "comment": "Go once the cause list is agreed"}
-    for headers in (ADMIN, {"X-Demo-User": "demo.evaluator"}, EMP):
+    for headers in ({"X-Demo-User": "demo.evaluator"}, EMP):
         assert client.post("/api/readout/decision", headers=headers, json=body).status_code == 403
     assert client.post("/api/readout/decision", headers=glenn, json={"decision": "go", "comment": "  "}).status_code == 422
     assert client.post("/api/readout/decision", headers=glenn, json={"decision": "maybe", "comment": "x"}).status_code == 422
@@ -80,3 +80,11 @@ def test_only_the_business_owner_records_the_decision_with_a_reason(client):
     assert {c["id"] for c in d["conditions"]} >= {"cause_list", "repeat_rule"}               # the evidence it rested on is kept
     with db.connect() as conn:
         assert conn.execute("SELECT count(*) FROM audit WHERE action='go_no_go_decision'").fetchone()[0] == 1
+
+
+def test_an_administrator_may_sign_but_only_the_rule_owner_signs_it_off(client):
+    done = client.post(RULE + "/signoff", headers=ADMIN, json={"decision": "sign_off"}).json()
+    assert done["state"] == "draft" and done["reviews"][0]["counts"] is False
+    juul = signed_in(client, "juul@example.nl", None, role="rule_owner")
+    ok = client.post(RULE + "/signoff", headers=juul, json={"decision": "sign_off"}).json()
+    assert ok["state"] == "signed_off" and ok["signed_by"] == ["Test Juul"]

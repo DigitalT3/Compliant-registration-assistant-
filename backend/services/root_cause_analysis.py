@@ -17,7 +17,7 @@ from .. import db
 from ..dbutil import audit
 from ..errors import ApiError
 from ..settings import get_config
-from . import agreement, ai
+from . import agreement, ai, taxonomy_review
 
 TARGET_COVERAGE = 0.90           # FR-18: themes cover at least 90% of the "Other" records
 TARGET_AGREEMENT = 0.85          # FR-20: at least 85% agreement between assistant and expert labels ...
@@ -215,7 +215,7 @@ def proposal_state(conn) -> dict | None:
     p = _get(conn, KEY_PROPOSAL)
     if not p:
         return None
-    return {**p, "review": agreement.status(conn, KEY_REVIEW, p["content_hash"], _required(get_config()))}
+    return {**p, "review": agreement.status(conn, KEY_REVIEW, p["content_hash"], _required(get_config()), taxonomy_review.OWNER_ROLES)}
 
 
 # PUBLIC_INTERFACE

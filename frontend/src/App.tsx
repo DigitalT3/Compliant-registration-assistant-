@@ -437,7 +437,7 @@ function RootCauses({ config, canReview, onReviewed }: { config: any; canReview:
           <p>{t("taxo.progress", { agreed: review.agreed, required: review.required })}{review.agreed_at && ` ${t("taxo.agreed_on", { date: review.agreed_at.slice(0, 10) })}`}</p>
           {review.reviews.length === 0 ? <p className="muted">{t("taxo.none")}</p> : (
             <ul>{review.reviews.map((r: any) => (
-              <li key={r.user_id}><b>{r.name}</b>: {t(`taxo.decision.${r.decision}`)} · {r.at.slice(0, 10)}{!r.current && <span className="muted"> {t("taxo.older")}</span>}{r.comment && <> · <i>{r.comment}</i></>}</li>
+              <li key={r.user_id}><b>{r.name}</b>: {t(`taxo.decision.${r.decision}`)} · {r.at.slice(0, 10)}{!r.current && <span className="muted"> {t("taxo.older")}</span>}{r.counts === false && <span className="muted"> {t("review.no_count")}</span>}{r.comment && <> · <i>{r.comment}</i></>}</li>
             ))}</ul>
           )}
           {canReview ? (
@@ -690,7 +690,7 @@ function Configuration({ config, canSign, canReviewDisputes, onUpdated }: { conf
           <p>{t("rule.version", { v: signoff.rule_version })}{signoff.signed_at && ` ${t("rule.signed_on", { date: signoff.signed_at.slice(0, 10) })}`}</p>
           {signoff.reviews.length === 0 ? <p className="muted">{t("rule.none")}</p> : (
             <ul>{signoff.reviews.map((r: any) => (
-              <li key={r.user_id}><b>{r.name}</b>: {t(`rule.decision.${r.decision}`)} · {r.at.slice(0, 10)}{!r.current && <span className="muted"> {t("rule.older")}</span>}{r.comment && <> · <i>{r.comment}</i></>}</li>
+              <li key={r.user_id}><b>{r.name}</b>: {t(`rule.decision.${r.decision}`)} · {r.at.slice(0, 10)}{!r.current && <span className="muted"> {t("rule.older")}</span>}{r.counts === false && <span className="muted"> {t("review.no_count")}</span>}{r.comment && <> · <i>{r.comment}</i></>}</li>
             ))}</ul>
           )}
           {canSign ? (

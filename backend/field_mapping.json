@@ -34,6 +34,7 @@
     "summary_meta": "Whether the summary came from the mock model; test bookkeeping.",
     "scenario": "Scripted test scenario tag; test bookkeeping.",
     "is_poc": "Marks the record as made by the PoC; never leaves it.",
-    "is_seed": "Marks synthetic history; never leaves the PoC."
+    "is_seed": "Marks synthetic history; never leaves the PoC.",
+    "creator_role": "Role of the account that saved the record, kept for the 12-month analysis (creator role); the complaint system sets its own."
   }
 }

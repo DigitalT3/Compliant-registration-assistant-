@@ -175,8 +175,15 @@ def _migrate_v11(db) -> None:
         _add_column(db, "repeat_disputes", col, "TEXT")
 
 
+def _migrate_v12(db) -> None:
+    """The role of the account that saved a complaint (the PRD's 12-month extract lists the creator role)."""
+    _add_column(db, "complaints", "creator_role", "TEXT")
+    db.execute("UPDATE complaints SET creator_role=(SELECT u.role FROM users u WHERE u.id=complaints.registering_user) "
+               "WHERE creator_role IS NULL AND registering_user IS NOT NULL")
+
+
 MIGRATIONS = {2: _migrate_v2, 3: _migrate_v3, 4: _migrate_v4, 5: _migrate_v5, 6: _migrate_v6, 7: _migrate_v7, 8: _migrate_v8,
-              9: _migrate_v9, 10: _migrate_v10, 11: _migrate_v11}
+              9: _migrate_v9, 10: _migrate_v10, 11: _migrate_v11, 12: _migrate_v12}
 
 
 # PUBLIC_INTERFACE

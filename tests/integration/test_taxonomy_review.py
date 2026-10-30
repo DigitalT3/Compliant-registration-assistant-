@@ -28,7 +28,7 @@ def test_the_list_starts_as_a_draft(client):
 
 def test_only_the_process_owners_can_review(client):
     body = {"decision": "agree"}
-    for headers in (EMP, LEAD, ADMIN, {"X-Demo-User": "demo.viewer"}):
+    for headers in (EMP, LEAD, {"X-Demo-User": "demo.viewer"}):
         assert client.post(URL + "/review", headers=headers, json=body).status_code == 403
     assert client.post(URL + "/review", json=body).status_code == 401                        # not signed in
     assert client.post(URL + "/review", headers={"X-Demo-User": "demo.evaluator"}, json=body).status_code == 200
@@ -73,3 +73,17 @@ def test_changing_the_list_resets_the_agreement(client, monkeypatch):
     assert s["state"] == "draft" and s["agreed"] == 0                                        # nobody agreed to THIS list
     assert len(s["reviews"]) == 3 and not any(r["current"] for r in s["reviews"])           # their reviews stay as history
     assert taxonomy_review.content_hash(cfg) != taxonomy_review.content_hash(copy.deepcopy(cfg) | {"root_causes": copy.deepcopy(cfg["root_causes"])[:-1]})
+
+
+def test_an_administrator_may_review_but_does_not_count_as_a_process_owner(client):
+    kwafie, naomi, maikel = owners(client)
+    admin = client.post(URL + "/review", headers=ADMIN, json={"decision": "agree"}).json()
+    assert admin["agreed"] == 0 and admin["reviews"][0]["counts"] is False and admin["reviews"][0]["role"] == "admin"
+    for h in (kwafie, naomi):
+        client.post(URL + "/review", headers=h, json={"decision": "agree"})
+    still = state(client)
+    assert still["agreed"] == 2 and still["state"] == "draft"                       # two owners and an administrator are not three owners
+    done = client.post(URL + "/review", headers=maikel, json={"decision": "agree"}).json()
+    assert done["state"] == "agreed" and done["agreed"] == 3
+    asked = client.post(URL + "/review", headers=ADMIN, json={"decision": "changes", "comment": "x"}).json()
+    assert asked["state"] == "agreed"                                               # an administrator's change request does not undo the owners' agreement

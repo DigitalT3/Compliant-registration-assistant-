@@ -15,7 +15,7 @@ def test_reset_is_deterministic(fresh_db):
     first = seed.fingerprint()
     seed.reset()
     assert seed.fingerprint() == first
-    assert first["user_version"] == 11
+    assert first["user_version"] == 12
 
 
 def test_dataset_minimums(fresh_db):
@@ -29,3 +29,12 @@ def test_dataset_minimums(fresh_db):
 
 def test_seed_if_empty_does_not_duplicate(fresh_db):
     assert seed.seed_if_empty() is False
+
+
+def test_reset_refuses_the_live_postgres_schema(monkeypatch):
+    import pytest
+    monkeypatch.setenv("POC_DB", "postgres")
+    monkeypatch.delenv("POC_PG_SCHEMA", raising=False)
+    monkeypatch.delenv("POC_ALLOW_LIVE_RESET", raising=False)
+    with pytest.raises(RuntimeError, match="Refusing to reset the live Postgres schema"):
+        seed.reset()
