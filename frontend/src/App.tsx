@@ -702,8 +702,10 @@ function Readout({ canDecide }: { canDecide: boolean }) {
   );
 }
 
+const DEFAULT_FIELDS = ["channel", "priority", "status", "owner_team", "response_target_days"];
+
 function About({ config }: { config: any }) {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const open = Object.entries(config?.provisional_meta || {}) as [string, any][];
   return (
     <section>
@@ -711,6 +713,15 @@ function About({ config }: { config: any }) {
       <article className="card"><h3>{t("about.impl")}</h3><p>{t("about.impl.l")}</p></article>
       <article className="card"><h3>{t("about.mock")}</h3><p>{t("about.mock.l")}</p></article>
       <article className="card"><h3>{t("about.prov")}</h3><p>{t("about.prov.l")}</p></article>
+      <article className="card" aria-label={t("about.defaults")}>
+        <h3>{t("about.defaults")}</h3>
+        <p className="muted">{t("about.defaults.l")}</p>
+        <table><thead><tr><th>{t("f.complaint_type")}</th>{DEFAULT_FIELDS.map((k) => <th key={k}>{t(`f.${k}`)}</th>)}</tr></thead>
+          <tbody>{(config?.types || []).map((x: any) => {
+            const d = { ...(config.defaults?._all || {}), ...(config.defaults?.[x.id] || {}) };
+            return <tr key={x.id}><td><b>{x[lang] || x.en}</b></td>{DEFAULT_FIELDS.map((k) => <td key={k}>{d[k] ?? "–"}</td>)}</tr>;
+          })}</tbody></table>
+      </article>
       <article className="card">
         <h3>{t("about.open")}</h3>
         <table><thead><tr><th>{t("about.open.item")}</th><th>{t("about.open.who")}</th></tr></thead>

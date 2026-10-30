@@ -129,14 +129,7 @@ Each entry carries a Dutch and English name, a one-line definition and 2 example
 
 ### 5.3 Complaint types and defaults (FR-05)
 
-| Type | Typical causes | Channel | Priority | Status | Owner team | Response target |
-|---|---|---|---|---|---|---|
-| Service failure | Missed/late, Communication | Phone | Normal | Open | Operations | 2 working days |
-| Damage or incident | Spillage, Container, Damage | Phone | High | Open | Operations | 1 working day |
-| Invoice or contract | Invoicing | Email | Normal | Open | Customer service | 5 working days |
-| Conduct or communication | Driver conduct, Communication | Phone | Normal | Open | Customer service | 3 working days |
-
-Defaults apply on type selection, never overwrite a field the user typed, and are documented in `config/defaults.json`.
+The defaults per type (channel, priority, status, owner team, response target) are in [DEFAULTS.md](DEFAULTS.md), generated from `config.json`. They apply on type selection, never overwrite a field the user typed, and are shown on the About page. The build uses three types (service, billing, conduct); the earlier four-type table in this plan was replaced.
 
 ### 5.4 Repeat rule (version `draft-juul-v1`, configurable)
 

@@ -654,6 +654,7 @@ test("T42 an order picked after the summary was made fills the empty container n
   await search(page, "100012");
   await selectFirst(page);
   await page.getByLabel("Complaint type").selectOption("service");
+  await expect(page.getByLabel("Owner team")).toHaveValue("operations");                           // let the type's update finish first
   await page.getByLabel("Order", { exact: true }).selectOption("");                                // the order was prefilled: clear it
   await describe(page, "De container is vandaag niet geleegd.", "nl");                              // no container in the text, no order chosen
   await expect(page.getByLabel("Container no.")).toHaveValue("");
@@ -934,4 +935,36 @@ test("T52 FR-04: every prefillable field is filled after a customer-number match
   await selectFirst(page);
   await expect(exact(page, "Customer")).toContainText("Bos Fruitgroothandel");
   await expect(page.getByLabel("Site", { exact: true })).not.toHaveValue("");
+});
+
+test("T53 FR-05: choosing each complaint type applies its documented defaults; typed values stay; the table is on the About page", async ({ page }) => {
+  const exact = (label: string) => page.locator(".row").filter({ has: page.locator("label", { hasText: new RegExp(`^${label.replace(/[()]/g, "\\$&")}$`) }) });
+  await openApp(page);
+  await search(page, "100018");
+  await selectFirst(page);
+  await expect(page.getByLabel("Priority")).toHaveValue("normal");                                  // before a type: status and priority are there
+  await expect(exact("Response target (days)")).toContainText("–");
+  const want: Record<string, [string, string, string]> = {                                          // type -> owner team, response target, label
+    service: ["operations", "2", "Collection service"], billing: ["customer_service", "5", "Billing"], conduct: ["customer_service", "3", "Conduct / other"] };
+  for (const [type, [team, days]] of Object.entries(want)) {
+    await page.getByLabel("Complaint type").selectOption(type);
+    await expect(page.getByLabel("Owner team")).toHaveValue(team);
+    await expect(exact("Owner team")).toContainText("Default");
+    await expect(exact("Response target (days)")).toContainText(days);
+    await expect(exact("Response target (days)")).toContainText("Default");
+    await expect(page.getByLabel("Priority")).toHaveValue("normal");
+    await expect(exact("Status")).toContainText("open");
+    await expect(page.getByLabel("Channel")).toHaveValue("phone");                                  // the customer is on the phone, whatever the type
+  }
+  await page.getByLabel("Priority").selectOption("high");                                           // typed by hand: stays when the type changes
+  await page.getByLabel("Complaint type").selectOption("service");
+  await expect(page.getByLabel("Priority")).toHaveValue("high");
+  await expect(exact("Priority")).toContainText(/Edited|Manual/);
+  await expect(page.getByLabel("Owner team")).toHaveValue("operations");                            // the rest follows the new type
+
+  await page.getByRole("button", { name: "About" }).click();                                        // documented in the app too
+  const table = page.getByLabel("Defaults per complaint type");
+  await expect(table.getByRole("row", { name: /Billing.*email.*customer_service.*5/ })).toBeVisible();
+  await expect(table.getByRole("row", { name: /Collection service.*operations.*2/ })).toBeVisible();
+  await expect(table.getByRole("row", { name: /Conduct \/ other.*customer_service.*3/ })).toBeVisible();
 });

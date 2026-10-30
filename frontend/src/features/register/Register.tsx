@@ -492,6 +492,7 @@ export default function Register({ onViewHistory, meName, config }: { onViewHist
             {row("channel", optionSelect("channel", opts.channel || []))}
             {row("priority", optionSelect("priority", opts.priority || []))}
             {row("owner_team", optionSelect("owner_team", opts.owner_team || []))}
+            {row("response_target_days", <span>{val("response_target_days") || "–"}</span>)}
             {row("status", <span>{val("status") || "–"}</span>)}
             {row("registering_user", colleagues.length ? (
               <select id="registering_user" value={val("registering_user")} onChange={(e) => setField("registering_user", e.target.value)}>
