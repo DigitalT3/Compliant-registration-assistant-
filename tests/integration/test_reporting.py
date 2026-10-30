@@ -1,0 +1,70 @@
+"""The Power BI feed (FR-17): read-only tables for the dashboard measures, behind a reporting key or an analytics sign-in."""
+import csv
+import io
+
+from tests.conftest import ADMIN, EMP
+from tests.integration.test_team_scope import PROV, register, signed_in
+
+KEY = {"X-Reporting-Key": "test-reporting-key"}
+
+
+def rows(resp):
+    return list(csv.reader(io.StringIO(resp.text)))
+
+
+def test_the_key_must_be_set_and_right(client, monkeypatch):
+    monkeypatch.delenv("REPORTING_TOKEN", raising=False)
+    assert client.get("/api/reporting/group_summary", headers=KEY).status_code == 401           # no key configured: nothing opens it
+    monkeypatch.setenv("REPORTING_TOKEN", "test-reporting-key")
+    assert client.get("/api/reporting/group_summary", headers={"X-Reporting-Key": "wrong"}).status_code == 401
+    assert client.get("/api/reporting/group_summary", headers=KEY).status_code == 200
+    assert client.get("/api/reporting/group_summary").status_code == 401                         # no key, no sign-in
+    assert client.get("/api/reporting/group_summary", headers=EMP).status_code == 403           # an employee has no analytics permission
+
+
+def test_group_summary_has_the_fr17_measures_by_group(client, monkeypatch):
+    monkeypatch.setenv("REPORTING_TOKEN", "test-reporting-key")
+    sales = signed_in(client, "sanne.sales@example.nl", "sales")
+    service = signed_in(client, "karel.service@example.nl", "customer_service")
+    register(client, headers=sales, participant="S1", field_provenance=PROV)
+    register(client, headers=service, participant="C1", field_provenance=PROV)
+    table = rows(client.get("/api/reporting/group_summary", headers=KEY))
+    head = table[0]
+    body = {r[0]: dict(zip(head, r)) for r in table[1:]}
+    for col in ("mean_duration_s", "other_share", "repeat_rate", "first_cause_kept", "top3_accepted", "summary_kept", "type_kept", "other_share_n"):
+        assert col in head, col
+    assert {"All groups", "sales", "customer_service"} <= set(body)
+    assert body["sales"]["sessions"] == "1" and body["All groups"]["sessions"] == "2"
+    as_json = client.get("/api/reporting/group_summary", headers=KEY, params={"format": "json"}).json()
+    assert as_json["dataset"] == "group_summary" and as_json["columns"] == head
+
+
+def test_a_lead_sees_their_team_only_and_not_the_user_test_tables(client):
+    sales = signed_in(client, "sanne.sales@example.nl", "sales")
+    service = signed_in(client, "karel.service@example.nl", "customer_service")
+    lead = signed_in(client, "lotte.lead@example.nl", "sales", role="lead")
+    register(client, headers=sales, participant="S1")
+    register(client, headers=service, participant="C1")
+    sessions = rows(client.get("/api/reporting/sessions", headers=lead))
+    assert {r[sessions[0].index("group")] for r in sessions[1:]} == {"sales"}
+    assert client.get("/api/reporting/baseline", headers=lead).status_code == 403
+    assert client.get("/api/reporting/baseline", headers=ADMIN).status_code == 200
+
+
+def test_every_dataset_reads_and_unknown_ones_do_not(client, monkeypatch):
+    monkeypatch.setenv("REPORTING_TOKEN", "test-reporting-key")
+    for name in ("group_summary", "sessions", "suggestions", "employees", "baseline", "interviews", "ratings"):
+        assert client.get(f"/api/reporting/{name}", headers=KEY).status_code == 200, name
+    assert client.get("/api/reporting/users", headers=KEY).status_code == 404
+    assert client.post("/api/reporting/sessions", headers=KEY, json={}).status_code == 405       # read-only
+
+
+def test_a_read_is_audited(client, monkeypatch):
+    from backend import db
+    monkeypatch.setenv("REPORTING_TOKEN", "test-reporting-key")
+    client.get("/api/reporting/sessions", headers=KEY)
+    conn = db.connect()
+    try:
+        assert conn.execute("SELECT count(*) FROM audit WHERE action='reporting_read' AND actor='reporting-key'").fetchone()[0] == 1
+    finally:
+        conn.close()

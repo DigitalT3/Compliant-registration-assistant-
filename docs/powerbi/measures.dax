@@ -1,0 +1,19 @@
+-- Measures for the report (Modeling > New measure). Table names are the query names from dashboard.pq.
+
+Median registration time (s) = MEDIAN ( sessions[duration_s] )
+
+Mean registration time (s) = AVERAGE ( sessions[duration_s] )
+
+Baseline mean (s) = AVERAGE ( baseline[seconds] )
+
+Faster than baseline = DIVIDE ( [Baseline mean (s)] - [Mean registration time (s)], [Baseline mean (s)] )          -- target: at least 50%
+
+"Other" share = DIVIDE ( COUNTROWS ( FILTER ( sessions, sessions[root_cause] = "other" ) ), COUNTROWS ( FILTER ( sessions, sessions[status] = "saved" ) ) )   -- target: under 10%
+
+Repeat rate = DIVIDE ( COUNTROWS ( FILTER ( sessions, sessions[repeat] = "1" ) ), COUNTROWS ( FILTER ( sessions, sessions[status] = "saved" ) ) )
+
+Top-3 accepted = DIVIDE ( COUNTROWS ( FILTER ( suggestions, suggestions[field] = "root_cause" && suggestions[outcome] <> "empty" ) ), COUNTROWS ( FILTER ( suggestions, suggestions[field] = "root_cause" ) ) )   -- use group_summary[top3_accepted] for the exact figure
+
+Summaries rated usable = DIVIDE ( COUNTROWS ( FILTER ( ratings, ratings[usable] = "1" ) ), COUNTROWS ( ratings ) )   -- target: at least 80% (8 of 10)
+
+Would use it daily = DIVIDE ( COUNTROWS ( FILTER ( interviews, interviews[would_use_daily] = "1" ) ), COUNTROWS ( interviews ) )   -- target: at least 5 of 6 to 8
