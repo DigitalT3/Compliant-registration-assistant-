@@ -55,13 +55,12 @@ export default function AuditTrail({ config }: { config: any }) {
           <p className="muted">{t("audit.unsaved.note")}</p>
           <p className="muted" role="status">{t("audit.unsaved.count", { n: unsaved?.total ?? 0 })}</p>
           <div className="table-scroll"><table>
-            <thead><tr><th>{t("ds.when")}</th><th>{t("ds.by")}</th><th>{t("audit.col.mode")}</th><th>{t("audit.col.last")}</th>
+            <thead><tr><th>{t("ds.when")}</th><th>{t("ds.by")}</th><th>{t("audit.col.last")}</th>
               {["find_customer", "review_details", "describe_complaint", "classify", "repeat_save"].map((k) => <th key={k}>{t(`step.${k}`)} (s)</th>)}<th>{t("audit.col.total")}</th><th>{t("audit.col.status")}</th></tr></thead>
             <tbody>{(unsaved?.items || []).map((r: any) => (
               <tr key={r.id}>
                 <td>{String(r.started).replace("T", " ").slice(0, 19)}<br /><small>{r.id.slice(0, 8)}</small></td>
                 <td>{r.actor_name || r.actor}</td>
-                <td>{t(`mode.${r.mode}`)}{r.participant_id && <><br /><small>{r.participant_id}{r.scenario && ` · ${r.scenario}`}</small></>}</td>
                 <td>{r.last_step ? t(`step.${r.last_step}`) : "–"}</td>
                 {r.steps.map((st: any) => <td key={st.step}>{st.seconds > 0 ? st.seconds : "–"}</td>)}
                 <td>{r.total_seconds}</td>
@@ -123,7 +122,7 @@ export default function AuditTrail({ config }: { config: any }) {
                   ? <span className="badge prov-prefilled">{t("audit.log.complete")}</span> : <span className="badge prov-default">{t("audit.log.incomplete")}</span>)}</h3>
                 {!detail.log.applicable ? <p className="empty">{t("audit.no_origins")}</p> : (<>
                   {detail.log.missing.length > 0 && <p className="warn">{t("audit.log.missing")}: {detail.log.missing.join(", ")}</p>}
-                  <p className="muted">{t(`mode.${detail.log.mode}`)}{detail.log.participant && ` · ${detail.log.participant}`}{detail.log.scenario && ` · ${detail.log.scenario}`} · {String(detail.log.started || "").replace("T", " ").slice(0, 19)} → {String(detail.log.ended || "").replace("T", " ").slice(0, 19)} · {t("audit.log.total", { s: detail.log.total_seconds })}
+                  <p className="muted">{String(detail.log.started || "").replace("T", " ").slice(0, 19)} → {String(detail.log.ended || "").replace("T", " ").slice(0, 19)} · {t("audit.log.total", { s: detail.log.total_seconds })}
                     {detail.log.time_check?.result === "capped" && ` · ${t("audit.log.capped")}`}</p>
                   <h4>{t("audit.log.steps")}</h4>
                   <table><thead><tr><th>{t("audit.col.step")}</th><th>{t("audit.log.seconds")}</th><th>{t("audit.log.visits")}</th></tr></thead>

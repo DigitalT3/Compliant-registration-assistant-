@@ -125,7 +125,7 @@ Each result shows the earlier complaint's date, status, cause and the reason it 
 
 ### 13. Never touch the live complaint system, and the model-down fallback (FR-16, alternative flow)
 1. Run `python -m scripts.readonly_check`. Expect: all rules pass (no client, address or write credential for the live complaint system).
-2. Fallback: stop the app, start it with the AI switched off (leave `LLM_PROVIDER` empty), and register. Expect: the plain form with prefill and defaults, no suggestions, and the session marked in the log. Restart normally afterwards.
+2. Fallback: stop the app, start it with the AI switched off (leave `LLM_PROVIDER` empty), and register. Expect: the form with prefill and defaults, no suggestions, and the session marked in the log. Restart normally afterwards.
 
 ### 14. Dashboard (FR-17)
 1. Sign in as `lead.cs@example.nl`. Expect: only the customer_service group's data.

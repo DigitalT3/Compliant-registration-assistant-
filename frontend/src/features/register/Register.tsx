@@ -31,9 +31,6 @@ interface State {
   summaryBusy: boolean;     // the summary is still being written (the suggestion is already shown)
   analysedText: string;
   email: string;
-  participant: string;
-  scenarioTag: string;
-  mode: "assistant" | "plain";
   emailNote: any | null;
   decisions: Record<string, { decision: "confirm" | "reject"; reason: string }>;
   cls: any | null;
@@ -50,7 +47,7 @@ interface State {
 
 const init: State = {
   step: 0, q: "", search: null, customerId: null, ctx: null, fields: {}, text: "", textLang: "auto", summary: null, aiSummary: null,
-  summaryFailed: null, summaryBusy: false, visits: [], analysedText: "", email: "", participant: "", scenarioTag: "", mode: "assistant", emailNote: null, decisions: {}, cls: null, clsFailed: null, rootCause: "", causeOrigin: "manual", otherReason: "", repeat: null, sessionId: null, openedAt: null, saved: null,
+  summaryFailed: null, summaryBusy: false, visits: [], analysedText: "", email: "", emailNote: null, decisions: {}, cls: null, clsFailed: null, rootCause: "", causeOrigin: "manual", otherReason: "", repeat: null, sessionId: null, openedAt: null, saved: null,
 };
 
 // Stepper state is kept in sessionStorage so a page reload does not lose the registration in progress.
@@ -176,10 +173,8 @@ export default function Register({ onViewHistory, meName, config }: { onViewHist
 
   // Best-effort session/event logging: never blocks the user.
   const ev = (body: object) => { if (s.sessionId) post(`/api/sessions/${s.sessionId}/events`, body).catch(() => undefined); };
-  const plain = s.mode === "plain";
   const next = async () => {
-    if (plain && s.step === 2 && !s.summary) set({ summary: emptySummary });   // form only: no AI call
-    if (!plain && s.step === 2 && s.text.trim() && s.analysedText !== s.text) {
+    if (s.step === 2 && s.text.trim() && s.analysedText !== s.text) {
       setBusy(true); setErr(null);
       try { await analyse(); }
       catch (e) { setErr(e instanceof ApiError ? e.message : String(e)); setBusy(false); return; }
@@ -217,7 +212,7 @@ export default function Register({ onViewHistory, meName, config }: { onViewHist
   });
 
   const selectCandidate = (c: any) => run(async () => {
-    const sid = s.sessionId || (await post("/api/sessions", { scenario: s.scenarioTag || null, mode: s.mode, participant_id: s.participant || null,
+    const sid = s.sessionId || (await post("/api/sessions", { mode: "assistant",
       opened_seconds_ago: s.openedAt ? Math.max(0, (Date.now() - s.openedAt) / 1000) : 0 })).session_id;
     const ctx = await get(`/api/customers/${c.customer_id}/context`);
     const pf = await post("/api/prefill", { origin,
@@ -448,18 +443,6 @@ export default function Register({ onViewHistory, meName, config }: { onViewHist
             <button disabled={busy || !s.q.trim()}>{busy ? t("search.searching") : t("search")}</button>
           </form>
           {s.q.trim() && !s.search && <p className="muted" aria-live="polite">{t("search.looks", { type: t(`search.type.${guessType(s.q)}`) })}</p>}
-          <details className="card" open={!!s.participant || !!s.scenarioTag || plain}>
-            <summary>{t("test.title")}</summary>
-            <div className="inline">
-              <label>{t("ut.participant")}<input value={s.participant} maxLength={40} disabled={!!s.sessionId} onChange={(e) => set({ participant: e.target.value })} /></label>
-              <label>{t("ut.scenario")}<input value={s.scenarioTag} maxLength={20} disabled={!!s.sessionId} onChange={(e) => set({ scenarioTag: e.target.value })} /></label>
-              <label>{t("test.mode")}
-                <select value={s.mode} disabled={!!s.sessionId} onChange={(e) => set({ mode: e.target.value as "assistant" | "plain" })}>
-                  <option value="assistant">{t("mode.assistant")}</option><option value="plain">{t("mode.plain")}</option>
-                </select></label>
-            </div>
-            <p className="muted">{t("test.note")}</p>
-          </details>
           <details className="card" open={!!s.email}>
             <summary>{t("email.title")}</summary>
             <textarea aria-label={t("email.paste")} rows={5} maxLength={8000} value={s.email} onChange={(e) => set({ email: e.target.value })} />
@@ -635,8 +618,7 @@ export default function Register({ onViewHistory, meName, config }: { onViewHist
               <p className="muted">{t("classify.note")}</p>
             </div>
           )}
-          {plain ? <p className="muted">{t("mode.plain_note")}</p>
-            : <button className="secondary" disabled={busy || !s.text.trim()} onClick={() => run(analyse)}>{t("classify")}</button>}
+          <button className="secondary" disabled={busy || !s.text.trim()} onClick={() => run(analyse)}>{t("classify")}</button>
           <h3>{t("classify.all")}</h3>
           {config?.review && config.review.state !== "agreed" && <p className="muted">{t("taxo.list_draft", { agreed: config.review.agreed, required: config.review.required })}</p>}
           <label htmlFor="cf">{t("classify.search")}</label>
@@ -712,7 +694,7 @@ export default function Register({ onViewHistory, meName, config }: { onViewHist
       {s.step > 0 && (
         <div className="nav">
           <button className="secondary" onClick={() => goto(s.step - 1)}>{t("back")}</button>{" "}
-          {s.step < 4 && <button onClick={next} disabled={busy || (s.step === 3 && (otherNeedsReason || s.summaryBusy))}>{!plain && s.step === 2 && s.text.trim() && s.analysedText !== s.text ? t("next.analyse") : t("next")}</button>}
+          {s.step < 4 && <button onClick={next} disabled={busy || (s.step === 3 && (otherNeedsReason || s.summaryBusy))}>{s.step === 2 && s.text.trim() && s.analysedText !== s.text ? t("next.analyse") : t("next")}</button>}
         </div>
       )}
     </section>

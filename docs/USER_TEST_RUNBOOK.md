@@ -37,8 +37,8 @@ For the timed sessions the app must run on the real clock (`POC_CLOCK_MODE=real`
 
 ## On the day
 
-1. **Today's form first.** For each tester and scenario, time "show me how" on the current system with a stopwatch, and enter the seconds on the Baseline screen with the group, scenario and participant ID.
-2. **The assistant, same people, same scenarios, within a week.** Tell each tester to register as they normally would. Choose the participant ID and scenario when the session starts, so the log links to the person. Do not coach them on the suggestions.
+1. **Today's form first.** For each tester and scenario, time "show me how" on the current system with a stopwatch, and enter the seconds on the Baseline screen with the user group.
+2. **The assistant, same people, same scenarios, within a week.** Tell each tester to register as they normally would. Each registration is linked to the tester through their own sign-in. Do not coach them on the suggestions.
 3. **Exit interview.** After the last scenario, ask "would you use this daily?" and record yes or no with a comment.
 4. **Blind labelling.** After the sessions, Kwafie, Naomi and Maikel label the saved complaints (cause, and usable or not usable for the summary) without seeing the saved cause or the suggestion.
 5. **Export.** From the Dashboard, export the CSVs (sessions, suggestions, disputes) before anything else changes.

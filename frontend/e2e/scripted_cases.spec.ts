@@ -190,34 +190,11 @@ test("T21 pasted email identifies the customer and fills the description", async
   await expect(page.getByLabel("Complaint description")).not.toHaveValue(/Onderwerp/);
 });
 
-test("T22 plain form mode: no AI, manual cause, saved and tagged for timing", async ({ page }) => {
-  await openApp(page);
-  await page.getByText("Test session (optional)").click();
-  await page.getByLabel("Participant").fill("P-E2E");
-  await page.getByLabel("Scenario").fill("T22");
-  await page.getByLabel(/^Mode/).selectOption("plain");
-  await search(page, "100009");
-  await selectFirst(page);
-  await page.getByLabel("Site", { exact: true }).selectOption("C009-S1");
-  await page.getByLabel("Complaint type").selectOption("service");
-  await page.getByRole("button", { name: "Next", exact: true }).click();
-  await page.getByLabel("Complaint description").fill("Container damaged by the truck.");
-  await page.getByRole("button", { name: "Next", exact: true }).click();          // no "Analyse" step in plain mode
-  await expect(page.getByText(/Plain form: no AI suggestions/)).toBeVisible();
-  await page.getByRole("radio", { name: /Container damage/ }).check();
-  await next(page);
-  await save(page).click();
-  await saved(page);
-});
-
-test("T23 dashboard (team lead) shows the success criteria, groups and the plain vs assistant split", async ({ page }) => {
+test("T23 dashboard (team lead) shows the success criteria, the step times and the exports", async ({ page }) => {
   await openApp(page, "demo.lead");
   await page.getByRole("button", { name: "Dashboard" }).click();
   await expect(page.getByRole("heading", { name: "Success criteria" })).toBeVisible();
   await expect(page.getByText(/< 10% 'Other'/)).toBeVisible();
-  await page.getByLabel("Group by").selectOption("mode");
-  await expect(page.getByRole("cell", { name: "plain", exact: true })).toBeVisible();
-  await expect(page.getByRole("cell", { name: "assistant", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Export CSV" })).toBeVisible();
   await expect(page.getByText(/\(median [\d.]+s, n = \d+\)/).first()).toBeVisible();                  // step card: mean and median
   await expect(page.getByText("Each visit to a step counts at most 10 minutes, so a tab left open is not counted. Going back and forth adds the visits up.")).toBeVisible();
@@ -692,16 +669,14 @@ test("T43 the admin must choose the team a lead leads", async ({ page }) => {
   await expect(page.getByLabel("Team led Anna Lead")).toHaveValue("sales");                       // editable in the list
 });
 
-test("T44 a team lead sees one team: banner, no 'group by user group', suggestions export", async ({ page }) => {
+test("T44 a team lead sees one team: banner, no user-group split, suggestions export", async ({ page }) => {
   await openApp(page, "demo.lead");
   await page.getByRole("button", { name: "Dashboard" }).click();
   await expect(page.getByRole("status").filter({ hasText: "Team: Group a" })).toBeVisible();
-  const options = await page.getByLabel("Group by").locator("option").allTextContents();
-  expect(options).not.toContain("User group");
+  await expect(page.locator("article.card", { hasText: "By user group" })).toHaveCount(0);               // one team only: nothing to split
   await expect(page.getByRole("button", { name: /Export suggestions CSV/ })).toBeVisible();
   await openApp(page, "demo.admin");                                                              // admins are not limited
   await page.getByRole("button", { name: "Dashboard" }).click();
-  await expect(page.getByLabel("Group by").locator("option", { hasText: "User group" })).toHaveCount(1);
   await expect(page.getByText(/^Team: /)).toHaveCount(0);
 });
 
@@ -757,7 +732,7 @@ test("T46 a real team lead signs in with their own password and sees only their 
   await page.getByRole("button", { name: "Save password" }).click();
   await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();                  // a lead lands on the dashboard
   await expect(page.getByRole("status").filter({ hasText: "Team: Sales" })).toBeVisible();       // only the team they lead
-  await expect(page.getByLabel("Group by").locator("option", { hasText: "User group" })).toHaveCount(0);
+  await expect(page.locator("article.card", { hasText: "By user group" })).toHaveCount(0);
   const menu = page.getByRole("navigation", { name: "Main navigation" });
   await expect(menu.getByRole("button", { name: "Register" })).toHaveCount(0);                   // leads do not register
   // The per-employee table, with real accounts and no demo header: the people of the lead's team only.
@@ -1159,32 +1134,6 @@ test("T59 FR-15: a registration made on the screen leaves a complete log: time p
   await expect(log).toContainText("the suggested summary was changed (impact)");                       // changed
 });
 
-test("T60 FR-15: a plain-form registration has a complete log too, without suggestions", async ({ page }) => {
-  await openApp(page);
-  await page.getByText("Test session (optional)").click();
-  await page.getByLabel(/^Mode/).selectOption("plain");
-  await search(page, "100013");
-  await selectFirst(page);
-  await page.getByLabel("Complaint type").selectOption("service");
-  await page.getByRole("button", { name: "Next", exact: true }).click();
-  await page.getByLabel("Complaint description").fill("Container not emptied (plain form).");
-  await next(page);
-  await page.getByRole("radio", { name: /Missed collection/ }).first().check();
-  await next(page);
-  await save(page).click();
-  await saved(page);
-  const id = (await page.getByRole("status").innerText()).match(/COM-\d+/)![0];
-  await openApp(page, "demo.admin");
-  await page.getByRole("button", { name: "Audit Trail" }).click();
-  await page.getByLabel("Record, customer name or number").fill(id);
-  await page.getByRole("button", { name: "Search" }).click();
-  await page.getByRole("button", { name: id }).click();
-  const log = page.getByLabel("Registration log");
-  await expect(log).toContainText("Log complete");
-  await expect(log).toContainText("Plain form");
-  await expect(log).toContainText("No suggestion was shown");
-});
-
 test("T61 live registration clock: visible from the start, ticks, shows the time per step, stops at save and matches the logged time", async ({ page, request }) => {
   await openApp(page);
   const clock = page.getByRole("timer");
@@ -1241,7 +1190,7 @@ test("T62 the clock can be switched off by one setting", async ({ page }) => {
 
 test("T63 FR-15: a registration that was started but not saved is listed on the Audit Trail with its log", async ({ page, request }) => {
   const emp = { "X-Demo-User": "demo.emp.a1" };
-  const sid = (await (await request.post(`${API}/api/sessions`, { headers: emp, data: { mode: "assistant", participant_id: "P-63" } })).json()).session_id;
+  const sid = (await (await request.post(`${API}/api/sessions`, { headers: emp, data: { mode: "assistant" } })).json()).session_id;
   const card = (await (await request.get(`${API}/api/customers/search?q=100013`, { headers: emp })).json()).candidates[0];
   await request.post(`${API}/api/prefill`, { headers: emp, data: { customer_id: card.customer_id, origin: "search", guess_site: true, session_id: sid } });
   for (const [a, b] of [["find_customer", "review_details"], ["review_details", "describe_complaint"]]) {
@@ -1257,7 +1206,6 @@ test("T63 FR-15: a registration that was started but not saved is listed on the 
   const row = page.locator("tbody tr", { hasText: sid.slice(0, 8) });
   await expect(row).toContainText("Abandoned");
   await expect(row).toContainText("Describe complaint");                                              // where it stopped
-  await expect(row).toContainText("P-63");
   await page.getByRole("tab", { name: "Saved records" }).click();
   await expect(page.getByRole("status")).toContainText(/saved records/);
 });
@@ -1281,8 +1229,6 @@ test("T64 FR-17 dashboard: time per registration, Other share, suggestion accept
   const row = groups.locator("tbody tr", { hasText: "group_b" });
   await expect(row).toContainText("%");                                                              // shares for that group, with their n
   await expect(row).toContainText("n=");
-  await page.getByLabel("Group by").selectOption("mode");                                            // other ways to cut it still work
-  await expect(page.locator("article.card", { hasText: "By mode" }).locator("tbody tr").first()).toBeVisible();
 });
 
 test("T65 FR-18/19/20 root-cause analysis screen: themes with coverage, a proposed list, agreement tied to that list, and the re-label test", async ({ page, request }) => {

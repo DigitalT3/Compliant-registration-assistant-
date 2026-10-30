@@ -253,34 +253,25 @@ function Dashboard({ config }: { config: any }) {
   const [summary, setSummary] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
   const [noTeam, setNoTeam] = useState(false);
-  const [groupBy, setGroupBy] = useState("group");
-  const [mode, setMode] = useState("");
+  const groupBy = "group";                                       // the FR-17 view: by user group (a team lead has no split: their own team only)
   const team: string | undefined = summary?.scope?.team;   // set for a team lead: the dashboard shows that team only
   const [people, setPeople] = useState<any>(null);
 
   useEffect(() => {
-    get("/api/analytics/summary", { group_by: groupBy, mode })
-      .then((r) => { setSummary(r); setError(null); setNoTeam(false); if (r.scope && groupBy === "group") setGroupBy("mode"); })
+    get("/api/analytics/summary", { group_by: groupBy })
+      .then((r) => { setSummary(r); setError(null); setNoTeam(false); })
       .catch((cause) => { setNoTeam(cause instanceof ApiError && cause.code === "team_required"); setError(cause instanceof ApiError ? cause.message : String(cause)); });
-  }, [groupBy, mode]);
+  }, []);
 
   useEffect(() => {
-    get("/api/analytics/employees", { mode }).then(setPeople).catch(() => setPeople(null));
-  }, [mode]);
+    get("/api/analytics/employees").then(setPeople).catch(() => setPeople(null));
+  }, []);
 
   const filters = (
     <div className="inline">
-      <label>{t("dash.group_by")}
-        <select value={groupBy} onChange={(e) => setGroupBy(e.target.value)}>
-          {(team ? ["mode", "scenario", "participant"] : ["group", "mode", "scenario", "participant"]).map((g) => <option key={g} value={g}>{t(`dash.by.${g}`)}</option>)}
-        </select></label>
-      <label>{t("dash.mode")}
-        <select value={mode} onChange={(e) => setMode(e.target.value)}>
-          <option value="">{t("dash.all")}</option><option value="assistant">{t("mode.assistant")}</option><option value="plain">{t("mode.plain")}</option>
-        </select></label>
-      <button className="secondary" onClick={() => download("/api/export/sessions.csv", "sessions.csv", { mode }).catch((c) => setError(String(c.message || c)))}>{t("dash.export")}</button>
-      <button className="secondary" onClick={() => download("/api/export/suggestions.csv", "suggestions.csv", { mode }).catch((c) => setError(String(c.message || c)))}>{t("dash.export_suggestions")}</button>
-      <button className="secondary" onClick={() => download("/api/export/employees.csv", "employees.csv", { mode }).catch((c) => setError(String(c.message || c)))}>{t("dash.export_employees")}</button>
+      <button className="secondary" onClick={() => download("/api/export/sessions.csv", "sessions.csv").catch((c) => setError(String(c.message || c)))}>{t("dash.export")}</button>
+      <button className="secondary" onClick={() => download("/api/export/suggestions.csv", "suggestions.csv").catch((c) => setError(String(c.message || c)))}>{t("dash.export_suggestions")}</button>
+      <button className="secondary" onClick={() => download("/api/export/employees.csv", "employees.csv").catch((c) => setError(String(c.message || c)))}>{t("dash.export_employees")}</button>
     </div>
   );
   // The Power BI feed (FR-17): the same dashboard figures as flat tables behind /api/reporting; a team lead gets their own team's tables only.
@@ -291,7 +282,7 @@ function Dashboard({ config }: { config: any }) {
       <p>{t("pbi.intro")}</p>
       <p className="muted"><code>{window.location.origin}/api/reporting/&lt;{t("pbi.table")}&gt;</code> · {t("pbi.header")} <code>X-Reporting-Key</code></p>
       <div className="choices">
-        {feed.map((k) => <button key={k} className="secondary" onClick={() => download(`/api/reporting/${k}`, `${k}.csv`, { mode }).catch((c) => setError(String(c.message || c)))}>{k}.csv</button>)}
+        {feed.map((k) => <button key={k} className="secondary" onClick={() => download(`/api/reporting/${k}`, `${k}.csv`).catch((c) => setError(String(c.message || c)))}>{k}.csv</button>)}
       </div>
       <p className="muted">{t("pbi.note")}</p>
     </article>
@@ -483,7 +474,7 @@ function RootCauses({ config, canReview, onReviewed }: { config: any; canReview:
 
 function UserTestData({ config, onChanged }: { config: any; onChanged: () => void }) {
   const { t, lang } = useI18n();
-  const [base, setBase] = useState({ user_group: "", scenario: "", participant_id: "", seconds: "", note: "" });
+  const [base, setBase] = useState({ user_group: "", seconds: "", note: "" });
   const [exit, setExit] = useState({ participant_id: "", would_use_daily: true, comment: "" });
   const [sample, setSample] = useState<any[]>([]);
   const [labels, setLabels] = useState<Record<string, { cause: string; usable: boolean | null }>>({});
@@ -501,12 +492,10 @@ function UserTestData({ config, onChanged }: { config: any; onChanged: () => voi
       <h3>{t("ut.title")}</h3>
       <ErrorMessage error={err} />{msg && <p className="ok">{msg}</p>}
       <form className="form-grid" onSubmit={(e) => { e.preventDefault(); setErr(null);
-        post("/api/baseline", { ...base, user_group: base.user_group || groups[0], scenario: base.scenario || null, participant_id: base.participant_id || null, note: base.note || null, seconds: Number(base.seconds) })
+        post("/api/baseline", { ...base, user_group: base.user_group || groups[0], note: base.note || null, seconds: Number(base.seconds) })
           .then(() => { setMsg(t("ut.recorded")); setBase({ ...base, seconds: "", note: "" }); onChanged(); }).catch(fail); }}>
         <h4>{t("ut.baseline")}</h4>
         <label>{t("ut.group")}<select value={base.user_group || groups[0]} onChange={(e) => setBase({ ...base, user_group: e.target.value })}>{groups.map((g) => <option key={g}>{g}</option>)}</select></label>
-        <label>{t("ut.scenario")}<input value={base.scenario} maxLength={20} onChange={(e) => setBase({ ...base, scenario: e.target.value })} /></label>
-        <label>{t("ut.participant")}<input value={base.participant_id} maxLength={40} onChange={(e) => setBase({ ...base, participant_id: e.target.value })} /></label>
         <label>{t("ut.seconds")}<input required type="number" min="1" step="1" value={base.seconds} onChange={(e) => setBase({ ...base, seconds: e.target.value })} /></label>
         <button>{t("eval.submit")}</button>
       </form>
@@ -514,7 +503,7 @@ function UserTestData({ config, onChanged }: { config: any; onChanged: () => voi
         post("/api/exit-interviews", { ...exit, comment: exit.comment || null })
           .then(() => { setMsg(t("ut.recorded")); setExit({ participant_id: "", would_use_daily: true, comment: "" }); onChanged(); }).catch(fail); }}>
         <h4>{t("ut.exit")}</h4>
-        <label>{t("ut.participant")}<input required value={exit.participant_id} maxLength={40} onChange={(e) => setExit({ ...exit, participant_id: e.target.value })} /></label>
+        <label>{t("ut.tester")}<input required value={exit.participant_id} maxLength={40} onChange={(e) => setExit({ ...exit, participant_id: e.target.value })} /></label>
         <label className="checkbox"><input type="checkbox" checked={exit.would_use_daily} onChange={(e) => setExit({ ...exit, would_use_daily: e.target.checked })} />{t("ut.daily")}</label>
         <label>{t("ut.comment")}<input value={exit.comment} maxLength={500} onChange={(e) => setExit({ ...exit, comment: e.target.value })} /></label>
         <button>{t("eval.submit")}</button>
