@@ -195,7 +195,7 @@ def check_repeat(body: RepeatIn, user: dict = Depends(require("register"))):
 
 @router.post("/api/complaints", status_code=201, summary="Save complaint to the PoC database")
 def create(body: ComplaintIn, user: dict = Depends(require("register"))):
-    """Atomically save complaint, repeat evidence, events and audit. Returns ``POC-<seq>``."""
+    """Atomically save complaint, repeat evidence, events and audit. Returns ``COM-<seq>``."""
     with connection() as conn:
         return complaints.create(conn, body.model_dump(), user)
 

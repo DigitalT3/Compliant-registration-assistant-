@@ -199,7 +199,7 @@ def test_t09_other_cause_requires_reason_before_save(client):
         json={**payload, "other_reason": "Wildlife obstruction is not represented by the provisional taxonomy."},
     )
     assert saved.status_code == 201
-    assert saved.json()["id"].startswith("POC-")
+    assert saved.json()["id"].startswith("COM-")
 
 
 # FR-12 / T10
@@ -214,7 +214,7 @@ def test_t10_seeded_repeat_exposes_match_id_and_deterministic_evidence(client):
     assert response.status_code == 200
     result = response.json()
     assert result["is_repeat"] is True
-    assert result["matching_ids"] == ["POC-SEED-1"]
+    assert result["matching_ids"] == ["COM-SEED-1"]
     assert result["count"] == 1
     assert "same customer_id" in result["matches"][0]["reason"]
     assert "same site_id" in result["matches"][0]["reason"]

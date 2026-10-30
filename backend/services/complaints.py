@@ -114,8 +114,8 @@ def _record_final_provenance(conn, session, p: dict, cfg: dict) -> None:
 
 def _next_id(conn) -> str:
     n = conn.execute("SELECT coalesce(max(CAST(substr(id,5) AS INTEGER)),0) FROM complaints "
-                     "WHERE id GLOB 'POC-[0-9]*'").fetchone()[0]
-    return f"POC-{n + 1:04d}"
+                     "WHERE id GLOB 'COM-[0-9]*'").fetchone()[0]
+    return f"COM-{n + 1:04d}"
 
 
 # PUBLIC_INTERFACE

@@ -74,11 +74,11 @@ def test_repeat_decision_is_stored_without_changing_the_rule_outcome(client):
     saved = client.post("/api/complaints", headers=EMP, json={
         "customer_id": "C001", "site_id": "C001-S1", "channel": "phone", "complaint_type": "service",
         "root_cause": "missed", "description": "Missed again."}).json()
-    assert saved["repeat"]["is_repeat"] is True and saved["repeat"]["matches"][0]["id"] == "POC-SEED-1"
+    assert saved["repeat"]["is_repeat"] is True and saved["repeat"]["matches"][0]["id"] == "COM-SEED-1"
     d = client.post("/api/repeat-disputes", headers=EMP, json={
-        "complaint_id": saved["id"], "prior_complaint_id": "POC-SEED-1", "decision": "reject",
+        "complaint_id": saved["id"], "prior_complaint_id": "COM-SEED-1", "decision": "reject",
         "reason": "different container"}).json()
     assert d["rule_outcome_unchanged"] is True
     rec = client.get(f"/api/complaints/{saved['id']}", headers=EMP).json()
-    assert rec["repeat_detected"] is True and rec["repeat_disputes"][0]["prior_complaint_id"] == "POC-SEED-1"
+    assert rec["repeat_detected"] is True and rec["repeat_disputes"][0]["prior_complaint_id"] == "COM-SEED-1"
     assert json.loads(rec["repeat_disputes"][0]["evidence"])["is_repeat"] is True     # original evidence kept

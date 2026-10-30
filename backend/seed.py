@@ -171,7 +171,7 @@ def _seed_history(conn, anchor) -> None:
             "status,session_id,payload,channel,registration_date,registering_user,original_text,"
             "language,complaint_type,other_reason,taxonomy_version,is_poc,is_seed,priority,owner_team,"
             "response_target_days,container,root_cause_category) VALUES(?,?,?,?,?,?,?,?,NULL,?,?,?,?,?,?,?,?,?,1,1,?,?,?,?,?)",
-            (f"POC-SEED-{seq}", c, site, f"{c}-K{s}", f"{c}-O{s}0", cause, created, status,
+            (f"COM-SEED-{seq}", c, site, f"{c}-K{s}", f"{c}-O{s}0", cause, created, status,
              json.dumps(payload), d.get("channel", "phone"), created, "seed", text, lang, ctype, reason,
              cfg["taxonomy_version"], d.get("priority"), d.get("owner_team"),
              int(d["response_target_days"]) if d.get("response_target_days") else None, f"BOX-{n:03}-{s}",

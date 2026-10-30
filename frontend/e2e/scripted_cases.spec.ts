@@ -34,7 +34,7 @@ async function describe(page: Page, text: string, lang: "en" | "nl") {
 
 const next = (page: Page) => page.getByRole("button", { name: "Next", exact: true }).click();
 const save = (page: Page) => page.getByRole("button", { name: "Save complaint", exact: true });
-const saved = (page: Page) => expect(page.getByRole("status")).toContainText(/Saved as POC-\d+ \(PoC database only\)/);
+const saved = (page: Page) => expect(page.getByRole("status")).toContainText(/Saved as COM-\d+ \(PoC database only\)/);
 
 test("T01 customer number, English text, suggested cause preselected, saved", async ({ page }) => {
   await openApp(page);
@@ -159,14 +159,14 @@ test("T10 seeded repeat is flagged with evidence; the dispute is stored next to 
   await expect(page.getByRole("radio", { name: /Missed collection/ }).first()).toBeChecked();
   await next(page);
   await expect(page.getByText(/Repeat complaint: 1 earlier matching complaint/)).toBeVisible();
-  await expect(page.getByText(/POC-SEED-1/)).toBeVisible();
+  await expect(page.getByText(/COM-SEED-1/)).toBeVisible();
   await expect(page.getByText("Rule draft-juul-v1: same customer, same site, same cause category, within 60 days. Provisional: to be confirmed by Juul (Renewi).")).toBeVisible();
   await page.getByRole("radio", { name: "Not a repeat" }).check();
   await page.getByLabel("Reason (required)").fill("Different container this time");
   await save(page).click();
   await saved(page);
   const disputes = await (await request.get("http://127.0.0.1:8010/api/repeat-disputes", { headers: { "X-Demo-User": "demo.emp.a1" } })).json();
-  expect(disputes.items[0]).toMatchObject({ prior_complaint_id: "POC-SEED-1", decision: "reject" });
+  expect(disputes.items[0]).toMatchObject({ prior_complaint_id: "COM-SEED-1", decision: "reject" });
   expect(disputes.items[0].evidence.is_repeat).toBe(true);                         // original rule result kept
 });
 
@@ -720,7 +720,7 @@ test("T45 the summary and the cause are recorded as accepted when left alone and
     await next(page);
     await save(page).click();
     await saved(page);
-    return (await page.getByRole("status").innerText()).match(/POC-\d+/)![0];
+    return (await page.getByRole("status").innerText()).match(/COM-\d+/)![0];
   };
   const kept = await outcomes(await run(false));
   expect(kept).toMatchObject({ summary: "accepted", root_cause: "accepted", description: "typed" });

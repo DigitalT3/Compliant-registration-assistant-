@@ -80,7 +80,7 @@ docs/       IMPLEMENTATION_PLAN.md, TRACEABILITY.md, DEMO_SCRIPT.md, KNOWN_ISSUE
 | sites | Master | id, customer_id, name, address, postcode |
 | contracts | Master | id, customer_id, site_id, contract_no, service, start, end, active |
 | orders | Last 90 days | id, customer_id, site_id, contract_id, order_no, container_no, service_date, status |
-| complaints | Saved records, in the target-field structure (FR-14) | id (`POC-0001`), customer_id, site_id, contract_id, order_id, container_no, channel, complaint_date, registered_by, type, root_cause_l1, root_cause_l2, other_reason, description_original, language, summary_json, priority, status, owner_team, repeat_flag, repeat_count, linked_ids, taxonomy_version, rule_version, session_id, is_synthetic |
+| complaints | Saved records, in the target-field structure (FR-14) | id (`COM-0001`), customer_id, site_id, contract_id, order_id, container_no, channel, complaint_date, registered_by, type, root_cause_l1, root_cause_l2, other_reason, description_original, language, summary_json, priority, status, owner_team, repeat_flag, repeat_count, linked_ids, taxonomy_version, rule_version, session_id, is_synthetic |
 | root_causes / complaint_types | Loaded from config at seed time | id, level, parent, name_nl, name_en, definition, examples |
 | repeat_checks | Evidence per registration | complaint draft key, matches JSON, rule_version, checked_at |
 | repeat_disputes | FR-13 | complaint_id, linked_id, decision, reason, user, created_at, reviewed |
@@ -211,7 +211,7 @@ Errors use one envelope `{error:{code,message,request_id}}`; no stack traces; re
 | 0–2 | Setup, data model, synthetic data | Repo scaffold, schema and migrations, config files, seed script, 10 scenarios, demo users, `.env.example`, read-only guard test | FR-14 (model), FR-16 | `seed --reset` twice gives identical row counts |
 | 2–8 | Start, lookup, prefill, defaults | Search endpoint (4 input types, ambiguity, no match), context endpoint, prefill with provenance, defaults per type, step 1 and 2 UI, stepper shell, nl/en switch, demo-user picker, session and step-event logging started | FR-01, 03, 04, 05, (06 provenance data) | T01, T03, T10 pass; lookup ≤ 2 s |
 | 8–14 | Describe and classify | AI provider interface, mock provider, live provider, JSON schemas, `analyze`/`summarise`, fallback to plain form, top-3 with reasons, low-confidence no-preselect, "Other" reason and closest-category re-show, step 3 and 4 UI | FR-07, 08, 09, 10 | T02, T07, T09 pass; suggestion ≤ 3 s; AI-down fallback works |
-| 14–18 | Repeat, save, logging, guard | Repeat rule service and endpoint with evidence panel, atomic save with `POC-` ID, field and AI events, audit, review-and-save UI, history page | FR-12, 14, 15, 16 | T04, T05, T06 pass; no live write path test passes |
+| 14–18 | Repeat, save, logging, guard | Repeat rule service and endpoint with evidence panel, atomic save with `COM-` ID, field and AI events, audit, review-and-save UI, history page | FR-12, 14, 15, 16 | T04, T05, T06 pass; no live write path test passes |
 | 18–21 | Dashboard | Metrics: time per registration (and per step), "Other" share, suggestion acceptance (top-1/top-3/changed), prefill rate, repeat rate, by user group; sample sizes and empty states; baseline comparison; CSV export | FR-17 | Numbers match a hand count from the log on 10 registrations |
 | 21–24 | Test, fix, demo | Run T01–T10 end to end in the browser, fix, record results, demo script, README | All Musts | **10 of 10 scripted cases pass; Must checklist (section 12) all ticked** |
 

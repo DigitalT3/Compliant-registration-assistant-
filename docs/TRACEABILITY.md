@@ -13,7 +13,7 @@
 | FR-09 | Tested | Top-three candidate suggestions and low-confidence no-preselect behaviour are tested. | Mock confidence is not calibrated. |
 | FR-10 | Tested | Save rejects `Other` without a reason; browser case T09 also shows that a type must be chosen when the cause has none. | Taxonomy awaits approval. |
 | FR-11 | Tested | Two-level taxonomy (8 categories, 11 causes) stored at both levels; the picker shows "Category > Cause"; backend tests. | Draft taxonomy; needs Renewi approval. |
-| FR-12 | Tested | Deterministic configurable repeat rule (category-level match by default) and seeded boundary cases; browser case T10 shows `POC-SEED-1`. | Rule ownership and values require Juul confirmation. |
+| FR-12 | Tested | Deterministic configurable repeat rule (category-level match by default) and seeded boundary cases; browser case T10 shows `COM-SEED-1`. | Rule ownership and values require Juul confirmation. |
 | FR-13 | Tested | Confirm / not-a-repeat decision with a required reason in the UI; the stored dispute keeps the original rule evidence; backend tests and browser case T10. | Could feature; no user evaluation has occurred. |
 | FR-14 | Tested | PoC complaint save, retrieval, atomic rollback, and provisional field mapping are tested. | Mapping is not validated against Salesforce. |
 | FR-15 | Tested | Sessions (participant, scenario, mode), step events, provenance and suggestion outcomes feed the metrics; baseline timings and exit interviews are stored; CSV export. | No real-user measurements exist yet. |
