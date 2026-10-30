@@ -176,7 +176,7 @@ def bedrock(monkeypatch):
     monkeypatch.setenv("BEDROCK_MODEL_ID", "eu.example-model")
 
     def install(fake):
-        monkeypatch.setattr(ai.BedrockProvider, "_bedrock", lambda self: fake)
+        monkeypatch.setattr(ai.BedrockProvider, "_bedrock", lambda self, timeout=None: fake)
     return install
 
 

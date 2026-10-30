@@ -7,12 +7,13 @@ import Users from "./features/users/Users";
 import CustomerDataPage, { Section } from "./features/customerdata/CustomerDataPage";
 import CustomersPage from "./features/customerdata/CustomersPage";
 import AuditTrail from "./features/audit/AuditTrail";
+import RootCauseAnalysis from "./features/rca/RootCauseAnalysis";
 
-type Page = "register" | "history" | "audit" | "customers" | Section | "dashboard" | "readout" | "rootcauses" | "evaluation" | "config" | "users" | "about";
+type Page = "register" | "history" | "audit" | "customers" | Section | "dashboard" | "readout" | "rootcauses" | "rca" | "evaluation" | "config" | "users" | "about";
 
 /** Menu items and the permission each needs; items a role cannot use are not shown (the backend still enforces it). */
 const NAV: [Page, string | null][] = [
-  ["register", "register"], ["history", "read"], ["audit", "audit"], ["customers", "customer_data"], ["sites", "customer_data"], ["contracts", "customer_data"], ["orders", "customer_data"], ["containers", "customer_data"], ["dashboard", "analytics"], ["readout", "readout"], ["rootcauses", "read"],
+  ["register", "register"], ["history", "read"], ["audit", "audit"], ["customers", "customer_data"], ["sites", "customer_data"], ["contracts", "customer_data"], ["orders", "customer_data"], ["containers", "customer_data"], ["dashboard", "analytics"], ["readout", "readout"], ["rootcauses", "read"], ["rca", "rca_view"],
   ["evaluation", "evaluate"], ["config", "edit_rule"], ["users", "users"], ["about", null],
 ];
 
@@ -147,6 +148,7 @@ function AppShell() {
           {current === "audit" && <AuditTrail config={config} />}
           {current === "dashboard" && <Dashboard config={config} />}
           {current === "rootcauses" && <RootCauses config={config} canReview={me.permissions.includes("review_taxonomy")} onReviewed={(review: any) => setConfig({ ...config, review })} />}
+          {current === "rca" && <RootCauseAnalysis canRun={me.permissions.includes("rca_run")} canReview={me.permissions.includes("review_taxonomy")} />}
           {current === "readout" && <Readout canDecide={me.permissions.includes("decide")} />}
           {current === "evaluation" && <Evaluation config={config} />}
           {current === "config" && <Configuration config={config} canSign={me.permissions.includes("sign_off_rule")} onUpdated={setConfig} />}

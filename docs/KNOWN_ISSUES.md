@@ -4,7 +4,7 @@
 
 Live AI mode requires approved credentials and has not been tested. The deterministic mock provider demonstrates integration and fallback behaviour only; it is not evidence of summary quality, classification accuracy, calibrated confidence, or real-world performance.
 
-The PoC uses a provisional taxonomy, field mapping, required-field set, defaults, and repeat rule. The dashboard calculates from recorded PoC events, but no real-user sessions, current-process baseline, or validated time-saving result exists. FR-18 through FR-20 (beyond the synthetic labelling tool) remain later-phase work because no approved historical dataset or expert-labelled evaluation sample is available.
+The PoC uses a provisional taxonomy, field mapping, required-field set, defaults, and repeat rule. The dashboard calculates from recorded PoC events, but no real-user sessions, current-process baseline, or validated time-saving result exists. FR-18 through FR-20 have working tooling (screen Root-cause analysis, `/api/rca`, `scripts/rca.py`) proven only on synthetic data; their acceptance checks still need approved real "Other" text, the three process owners' agreement and 200 expert-labelled complaints.
 
 ## Operational limits
 

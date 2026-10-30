@@ -1279,3 +1279,25 @@ test("T64 FR-17 dashboard: time per registration, Other share, suggestion accept
   await page.getByLabel("Group by").selectOption("mode");                                            // other ways to cut it still work
   await expect(page.locator("article.card", { hasText: "By mode" }).locator("tbody tr").first()).toBeVisible();
 });
+
+test("T65 FR-18/19/20 root-cause analysis screen: themes with coverage, a proposed list, agreement tied to that list, and the re-label test", async ({ page, request }) => {
+  const emp = { "X-Demo-User": "demo.emp.a1" };
+  for (const reason of ["A seagull built a nest in the container", "Mice found in the paper container", "Road closure blocked the truck", "Parade event, street afgesloten"]) {
+    const r = await request.post(`${API}/api/complaints`, { headers: emp, data: { customer_id: "C006", site_id: "C006-S1", channel: "phone", complaint_type: "service", root_cause: "other", other_reason: reason, description: reason } });
+    expect(r.status()).toBe(201);
+  }
+  await openApp(page, "demo.admin");
+  await page.getByRole("button", { name: "Root-cause analysis" }).click();
+  await page.getByRole("button", { name: "Find themes" }).click();
+  await expect(page.getByTestId("rca-coverage")).toContainText("Coverage");
+  await expect(page.locator("article.card", { hasText: "Themes in" }).locator("tbody tr").first()).toBeVisible();
+  await page.getByRole("button", { name: "Propose a list" }).click();
+  await expect(page.getByTestId("rca-state")).toHaveText("draft");
+  await expect(page.getByText("Agreed by 0 of 3")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Agree to this list" })).toHaveCount(0);            // the administrator is not a process owner
+  await expect(page.getByRole("button", { name: "Re-label with the current list" })).toBeDisabled();   // no expert labels yet
+  await openApp(page, "demo.evaluator");
+  await page.getByRole("button", { name: "Root-cause analysis" }).click();
+  await page.getByRole("button", { name: "Agree to this list" }).click();
+  await expect(page.getByText("Agreed by 1 of 3")).toBeVisible();
+});

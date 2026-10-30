@@ -323,14 +323,18 @@
       "users",
       "customer_data",
       "edit_rule",
-      "readout"
+      "readout",
+      "rca_view",
+      "rca_run"
     ],
     "evaluator": [
       "read",
       "analytics",
       "evaluate",
       "review_taxonomy",
-      "readout"
+      "readout",
+      "rca_view",
+      "rca_run"
     ],
     "rule_owner": [
       "read",
@@ -342,11 +346,13 @@
       "read",
       "analytics",
       "readout",
-      "decide"
+      "decide",
+      "rca_view"
     ],
     "governance": [
       "read",
-      "audit"
+      "audit",
+      "rca_view"
     ],
     "viewer": [
       "read"
