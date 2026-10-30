@@ -19,6 +19,7 @@ class PrefillIn(BaseModel):
     origin: str | None = Field(default=None, pattern="^(search|email)$")   # how the complaint arrived: sets the channel default
     current_fields: dict[str, dict] = Field(default_factory=dict)
     session_id: str | None = None
+    guess_site: bool = False       # a customer was just chosen: fill the site from the latest order when the search gave none
 
 
 @router.get("/api/customers/search", summary="Search customers by number, order, container or name")
@@ -49,7 +50,7 @@ def do_prefill(body: PrefillIn, user: dict = Depends(require("register"))):
     """Return fields with provenance (prefilled/default/manual/edited/blank) and log it when a session is given."""
     with connection() as conn:
         ctx = lookup.context(conn, body.customer_id)
-        fields = prefill.build_prefill(ctx, user, body.site_id, body.order_id)
+        fields = prefill.build_prefill(ctx, user, body.site_id, body.order_id, body.guess_site)
         fields.update({k: v for k, v in body.current_fields.items() if v.get("provenance") in ("manual", "edited")})
         fields = prefill.apply_defaults(body.complaint_type, fields, body.origin)
         if body.session_id:

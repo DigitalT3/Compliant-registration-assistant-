@@ -408,7 +408,7 @@ test("T32 customer data is three tabbed tables; a row's Use button fills the for
   await selectFirst(page);
   const data = page.getByRole("region", { name: "Customer context" });
   await expect(data.getByRole("tab", { name: "Sites (2)" })).toBeVisible();
-  await expect(data.getByRole("tab", { name: "Contracts (2)" })).toBeVisible();
+  await expect(data.getByRole("tab", { name: /Active contracts \(\d+\)/ })).toBeVisible();       // the chosen site's contracts: the site is prefilled
   await expect(data.getByRole("tab", { name: /orders \(\d+\)/i })).toBeVisible();
 
   await data.getByRole("tab", { name: /Sites/ }).click();
@@ -651,19 +651,20 @@ test("T41 the header controls stay inside the window on a narrow screen", async 
 
 test("T42 an order picked after the summary was made fills the empty container number", async ({ page }) => {
   await openApp(page);
-  await search(page, "100009");
+  await search(page, "100012");
   await selectFirst(page);
   await page.getByLabel("Complaint type").selectOption("service");
+  await page.getByLabel("Order", { exact: true }).selectOption("");                                // the order was prefilled: clear it
   await describe(page, "De container is vandaag niet geleegd.", "nl");                              // no container in the text, no order chosen
   await expect(page.getByLabel("Container no.")).toHaveValue("");
   await page.getByRole("button", { name: "Back", exact: true }).click();                           // classify -> describe
   await page.getByRole("button", { name: "Back", exact: true }).click();                           // describe -> review
   const data = page.getByRole("region", { name: "Customer context" });
   await data.getByRole("tab", { name: /orders/i }).click();
-  await data.getByRole("row").filter({ hasText: "BOX-009-1" }).first().getByRole("button", { name: "Use" }).click();
+  await data.getByRole("row").filter({ hasText: "BOX-012-1" }).first().getByRole("button", { name: "Use" }).click();
   await next(page);
   await next(page);                                                                                // same text: no new AI call
-  await expect(page.getByLabel("Container no.")).toHaveValue("BOX-009-1");
+  await expect(page.getByLabel("Container no.")).toHaveValue("BOX-012-1");
   await expect(page.locator(".row", { hasText: "Container no." }).getByText("Prefilled")).toBeVisible();
 });
 
@@ -892,4 +893,45 @@ test("T51 the rule owner signs off the repeat rule and the business owner record
   await page.getByRole("button", { name: "Readout" }).click();
   await expect(page.getByText("Only the business owner")).toBeVisible();
   await expect(page.getByRole("button", { name: "Record decision" })).toHaveCount(0);
+});
+
+test("T52 FR-04: every prefillable field is filled after a customer-number match, and each one can be edited", async ({ page }) => {
+  const exact = (pg: Page, label: string) => pg.locator(".row").filter({ has: pg.locator("label", { hasText: new RegExp(`^${label}$`) }) });
+  await openApp(page);
+  await search(page, "100014");                                                                    // two sites, no site in the search
+  await selectFirst(page);
+  const today = new Date().toLocaleDateString("en-CA", { timeZone: "Europe/Amsterdam" });
+  await expect(page.getByLabel("Site", { exact: true })).toHaveValue("C014-S1");                    // from the latest order
+  await expect(page.getByLabel("Contract")).not.toHaveValue("");
+  await expect(page.getByLabel("Order", { exact: true })).not.toHaveValue("");
+  await expect(exact(page, "Container")).not.toContainText("–");
+  await expect(page.getByLabel("Channel")).toHaveValue("phone");
+  await expect(page.getByLabel("Registration date")).toHaveValue(today);                            // today, not the demo clock
+  await expect(page.getByLabel("Registered by")).toHaveValue("demo.emp.a1");
+  for (const label of ["Customer", "Site", "Contract", "Order", "Channel", "Registration date", "Registered by"])
+    await expect(field(page, label).first()).toContainText(/Prefilled|Default/);
+
+  const other = page.getByLabel("Registered by").locator("option").filter({ hasNotText: "Demo Employee A1" }).first();   // edit each
+  await page.getByLabel("Registered by").selectOption(await other.getAttribute("value") as string);
+  await expect(exact(page, "Registered by")).toContainText("Edited");
+  const day = new Date(Date.now() - 86400000).toLocaleDateString("en-CA", { timeZone: "Europe/Amsterdam" });
+  await page.getByLabel("Registration date").fill(day);
+  await expect(exact(page, "Registration date")).toContainText("Edited");
+  await page.getByLabel("Channel").selectOption("email");
+  await expect(exact(page, "Channel")).toContainText("Edited");
+  await page.getByLabel("Site", { exact: true }).selectOption("C014-S2");                           // the contract and order follow the site
+  await expect(exact(page, "Site")).toContainText("Edited");
+  await expect(page.getByLabel("Order", { exact: true })).not.toHaveValue("");
+  const orders = await page.getByLabel("Order", { exact: true }).locator("option").count();
+  await page.getByLabel("Order", { exact: true }).selectOption({ index: orders - 1 });
+  await expect(exact(page, "Order")).toContainText("Edited");
+  const contracts = await page.getByLabel("Contract").locator("option").count();
+  await page.getByLabel("Contract").selectOption({ index: contracts - 1 });
+  await expect(exact(page, "Contract")).toContainText("Edited");
+
+  await page.getByRole("button", { name: "Change customer" }).click();                              // the customer: choose another one
+  await search(page, "100016");
+  await selectFirst(page);
+  await expect(exact(page, "Customer")).toContainText("Bos Fruitgroothandel");
+  await expect(page.getByLabel("Site", { exact: true })).not.toHaveValue("");
 });

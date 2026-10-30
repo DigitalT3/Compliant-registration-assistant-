@@ -343,6 +343,7 @@ export const en: Record<string, string> = {
   "email.text_taken": "The complaint text was copied to the next step ({n} characters).",
   "email.by_name": "The company name was found in the email text.",
   "email.by_postcode": "The postcode was found in the email text.",
+  "review.change_customer": "Change customer",
   "email.ids": "Found in the email",
   "pw.title": "Choose a new password",
   "pw.forced": "You are using a temporary password. Choose your own password to continue.",

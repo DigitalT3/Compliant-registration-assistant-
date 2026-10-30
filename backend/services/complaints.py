@@ -4,11 +4,14 @@ Nothing here talks to any external system: there is no live-system write path.
 """
 import json
 import logging
+from datetime import date
 
 from .. import db
 from ..dbutil import audit
 from ..errors import ApiError
 from ..settings import causes_by_id, get_config
+from . import accounts as accounts_svc
+from . import prefill as prefill_svc
 from . import repeat as repeat_svc
 from . import sessions as sessions_svc
 
@@ -55,6 +58,24 @@ def _validate(conn, p: dict, cfg: dict) -> None:
         if p.get(field) and not conn.execute(f"SELECT 1 FROM {table} WHERE id=? AND customer_id=?",
                                              (p[field], p["customer_id"])).fetchone():
             raise ApiError(422, "invalid_reference", f"{field} does not belong to the customer.")
+
+
+def _registration(conn, p: dict, user: dict) -> tuple[str, str]:
+    """Registering user and registration date: the employee's own and today's unless the form changed them."""
+    who = (p.get("registering_user") or "").strip() or user["id"]
+    if who != user["id"]:
+        ok = {c["id"] for c in accounts_svc.colleagues(conn)}
+        if who not in ok:
+            raise ApiError(422, "invalid_registering_user", "The registering user must be an active colleague who can register complaints.")
+    day = (p.get("registration_date") or "").strip() or prefill_svc.today()
+    try:
+        d = date.fromisoformat(day)
+    except ValueError:
+        raise ApiError(422, "invalid_registration_date", "The registration date must be a date like 2026-10-30.")
+    now = date.fromisoformat(prefill_svc.today())
+    if d > now or (now - d).days > 366:
+        raise ApiError(422, "invalid_registration_date", "The registration date cannot be in the future or more than a year back.")
+    return who, d.isoformat()
 
 
 def _form_fields(conn, p: dict, cfg: dict) -> dict:
@@ -108,6 +129,7 @@ def create(conn, p: dict, user: dict) -> dict:
         if cur != p["repeat_input_hash"]:
             raise ApiError(409, "stale_repeat_check", "Repeat check is out of date; run it again.")
     extra = _form_fields(conn, p, cfg)   # validates priority/owner_team before any write
+    who, reg_day = _registration(conn, p, user)
     try:
         conn.execute("BEGIN IMMEDIATE")
         cid, stamp = _next_id(conn), db.reference_now().isoformat()
@@ -119,8 +141,8 @@ def create(conn, p: dict, user: dict) -> dict:
             "id": cid, "customer_id": p["customer_id"], "site_id": p.get("site_id"),
             "contract_id": p.get("contract_id"), "order_id": p.get("order_id"), "root_cause": p["root_cause"],
             "created": stamp, "status": extra["status"], "session_id": p.get("session_id"),
-            "payload": json.dumps(payload), "channel": p["channel"], "registration_date": stamp,
-            "registering_user": user["id"], "original_text": p["description"], "language": p.get("language"),
+            "payload": json.dumps(payload), "channel": p["channel"], "registration_date": reg_day,
+            "registering_user": who, "original_text": p["description"], "language": p.get("language"),
             "summary_json": json.dumps(p.get("summary")), "summary_meta": json.dumps(p.get("summary_meta")),
             "complaint_type": p["complaint_type"], "other_reason": (p.get("other_reason") or "").strip() or None,
             "rule_version": cfg["repeat_rule"]["version"], "taxonomy_version": cfg["taxonomy_version"],
@@ -141,7 +163,8 @@ def create(conn, p: dict, user: dict) -> dict:
             audit(conn, user["id"], "session_completed", {"session_id": session["id"], "outcome": "saved"})
         audit(conn, user["id"], "repeat_rule_evaluated", {"complaint_id": cid, "is_repeat": result["is_repeat"],
                                                           "rule_version": result["rule_version"]})
-        audit(conn, user["id"], "complaint_saved", {"complaint_id": cid, "root_cause": p["root_cause"]})
+        audit(conn, user["id"], "complaint_saved", {"complaint_id": cid, "root_cause": p["root_cause"],
+                                                           **({"registered_for": who} if who != user["id"] else {})})
         conn.commit()
     except Exception:
         log.exception("complaint save failed")   # the API response stays generic; the cause goes to the server log

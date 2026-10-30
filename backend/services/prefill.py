@@ -2,8 +2,15 @@
 
 Provenance values: prefilled, default, manual, edited, blank.
 """
-from .. import db
+from datetime import datetime, timezone
+
 from ..settings import get_config
+
+try:
+    from zoneinfo import ZoneInfo
+    _LOCAL = ZoneInfo("Europe/Amsterdam")
+except Exception:                                  # no time-zone data on this machine: use UTC
+    _LOCAL = timezone.utc
 
 PROVENANCE = {"prefilled", "default", "suggested", "manual", "edited", "blank"}
 
@@ -15,13 +22,32 @@ def _f(value, prov=None):
 
 
 # PUBLIC_INTERFACE
-def build_prefill(ctx: dict, user: dict, site_id=None, order_id=None) -> dict:
-    """Build prefilled fields from customer context. A site is only filled when
-    unambiguous (explicitly chosen or the customer has exactly one). When no order was
-    matched, the most recent order at the site is prefilled (with its container)."""
+def today() -> str:
+    """Today's date where the employees work (the real date, not the fixed clock the seeded history uses)."""
+    return datetime.now(_LOCAL).date().isoformat()
+
+
+def _guess_site(ctx: dict):
+    """The site to prefill when the search did not point at one: the customer's only site, else the site of the
+    latest order, else the only site with an active contract. Otherwise None (the employee chooses)."""
+    sites = ctx["sites"]
+    if len(sites) == 1:
+        return sites[0]["id"]
+    if ctx["orders"]:
+        return ctx["orders"][0]["site_id"]            # orders arrive newest first
+    with_contract = {c["site_id"] for c in ctx["contracts"] if c["active"]}
+    return next(iter(with_contract)) if len(with_contract) == 1 else None
+
+
+# PUBLIC_INTERFACE
+def build_prefill(ctx: dict, user: dict, site_id=None, order_id=None, guess_site: bool = False) -> dict:
+    """Build prefilled fields from customer context. With ``guess_site`` (a customer was just chosen) the site is
+    filled even when the search did not point at one (see ``_guess_site``); otherwise it is only filled when
+    explicitly given or the customer has exactly one. When no order was matched, the most recent order at the
+    site is prefilled (with its container)."""
     cust, sites = ctx["customer"], ctx["sites"]
-    if not site_id and len(sites) == 1:
-        site_id = sites[0]["id"]
+    if not site_id and (guess_site or len(sites) == 1):
+        site_id = _guess_site(ctx)
     contract = next((c for c in ctx["contracts"] if c["site_id"] == site_id and c["active"]), None)
     if not order_id and site_id:
         order_id = next((o["id"] for o in ctx["orders"] if o["site_id"] == site_id), None)
@@ -35,7 +61,7 @@ def build_prefill(ctx: dict, user: dict, site_id=None, order_id=None) -> dict:
         "order_id": _f(order_id, "prefilled"),
         "container": _f(order["container"] if order else None, "prefilled"),
         "registering_user": _f(user["id"], "prefilled"),
-        "registration_date": _f(db.reference_now().date().isoformat(), "prefilled"),
+        "registration_date": _f(today(), "prefilled"),
     }
 
 

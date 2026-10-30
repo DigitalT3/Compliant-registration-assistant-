@@ -75,6 +75,8 @@ class ComplaintIn(BaseModel):
     repeat_input_hash: str | None = None
     priority: str | None = Field(None, max_length=30)
     owner_team: str | None = Field(None, max_length=40)
+    registration_date: str | None = Field(None, max_length=10, description="YYYY-MM-DD; today when left out")
+    registering_user: str | None = Field(None, max_length=64, description="A colleague's user id when registering on their behalf")
     field_provenance: dict[str, str] | None = Field(
         None, description="Origin of each tracked field at save time (prefilled/default/suggested/manual/edited/blank)")
 

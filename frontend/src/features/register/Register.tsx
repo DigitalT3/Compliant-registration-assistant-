@@ -88,6 +88,10 @@ export default function Register({ onViewHistory, meName, config }: { onViewHist
   }, []);
 
   const val = (k: string) => s.fields[k]?.value || "";
+  const [colleagues, setColleagues] = useState<{ id: string; name: string }[]>([]);
+  useEffect(() => {                                    // who the complaint can be registered for (the registering user is editable)
+    if (s.step === 1) get<any>("/api/users/colleagues").then((r) => setColleagues(r.items)).catch(() => setColleagues([]));
+  }, [s.step]);
 
   // The registration clock starts when the form is opened (a new complaint), not when the customer is chosen.
   useEffect(() => { if (!s.sessionId && !s.openedAt) set({ openedAt: Date.now() }); }, [s.sessionId, s.openedAt]);   // eslint-disable-line react-hooks/exhaustive-deps
@@ -181,7 +185,7 @@ export default function Register({ onViewHistory, meName, config }: { onViewHist
     const ctx = await get(`/api/customers/${c.customer_id}/context`);
     const pf = await post("/api/prefill", { origin,
       customer_id: c.customer_id, site_id: c.matched_site_id, order_id: c.matched_order_id,
-      complaint_type: s.fields.complaint_type?.value, session_id: sid,
+      complaint_type: s.fields.complaint_type?.value, session_id: sid, guess_site: true,
     });
     sessionStorage.setItem("cra.currentCustomer", c.customer_id);
     // The type sent above (chosen earlier, or guessed from the email) produced those defaults, so it has to stay with them.
@@ -329,6 +333,7 @@ export default function Register({ onViewHistory, meName, config }: { onViewHist
       language: s.textLang === "auto" ? s.summary?.language || null : s.textLang, summary: s.summary,
       summary_meta: s.summary ? { mock: !!s.summary.mock } : null, session_id: s.sessionId,
       priority: val("priority") || null, owner_team: val("owner_team") || null, field_provenance: finalProvenance(),
+      registration_date: val("registration_date") || null, registering_user: val("registering_user") || null,
     });
     // FR-13: the rule outcome is stored as is; the user's confirm/dispute decisions are stored next to it.
     for (const [prior, d] of Object.entries(s.decisions)) {
@@ -461,7 +466,7 @@ export default function Register({ onViewHistory, meName, config }: { onViewHist
       {s.step === 1 && s.ctx && (
         <div>
           <div>
-            {row("customer_name", <span>{val("customer_name")}</span>)}
+            {row("customer_name", <span>{val("customer_name")} <button type="button" className="secondary" onClick={() => goto(0)}>{t("review.change_customer")}</button></span>)}
             {row("customer_number", <span>{val("customer_number")}</span>)}
             {row("complaint_type", (
               <select id="complaint_type" value={val("complaint_type")} onChange={(e) => changeType(e.target.value)}>
@@ -488,8 +493,13 @@ export default function Register({ onViewHistory, meName, config }: { onViewHist
             {row("priority", optionSelect("priority", opts.priority || []))}
             {row("owner_team", optionSelect("owner_team", opts.owner_team || []))}
             {row("status", <span>{val("status") || "–"}</span>)}
-            {row("registering_user", <span>{meName || val("registering_user")}</span>)}
-            {row("registration_date", <span>{val("registration_date")}</span>)}
+            {row("registering_user", colleagues.length ? (
+              <select id="registering_user" value={val("registering_user")} onChange={(e) => setField("registering_user", e.target.value)}>
+                {colleagues.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            ) : <span>{meName || val("registering_user")}</span>)}
+            {row("registration_date", <input id="registration_date" type="date" value={val("registration_date")} required
+              onChange={(e) => setField("registration_date", e.target.value)} />)}
           </div>
           <CustomerData ctx={s.ctx} siteId={val("site_id")} contractId={val("contract_id")} orderId={val("order_id")}
             onPickSite={changeSite} onPickContract={pickContract} onPickOrder={pickOrder} />

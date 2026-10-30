@@ -102,6 +102,13 @@ def users(status: str | None = Query(default=None, pattern="^(pending|active|dis
         return {"items": accounts.list_users(conn, status)}
 
 
+@router.get("/api/users/colleagues", summary="Colleagues who can register a complaint (to register on someone's behalf)")
+def colleagues(user: dict = Depends(require("register"))):
+    """Names only: active accounts whose role may register complaints."""
+    with connection() as conn:
+        return {"items": accounts.colleagues(conn)}
+
+
 @router.patch("/api/users/{user_id}", summary="Approve, disable or change role/group (administrators)")
 def update_user(user_id: str, body: UserUpdateIn, user: dict = Depends(require("users"))):
     with connection() as conn:

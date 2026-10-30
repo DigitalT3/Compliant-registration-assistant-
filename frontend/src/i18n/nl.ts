@@ -343,6 +343,7 @@ export const nl: Record<string, string> = {
   "email.text_taken": "De klachttekst is overgenomen naar de volgende stap ({n} tekens).",
   "email.by_name": "De bedrijfsnaam stond in de tekst van de e-mail.",
   "email.by_postcode": "De postcode stond in de tekst van de e-mail.",
+  "review.change_customer": "Andere klant",
   "email.ids": "Gevonden in de e-mail",
   "pw.title": "Kies een nieuw wachtwoord",
   "pw.forced": "U gebruikt een tijdelijk wachtwoord. Kies uw eigen wachtwoord om door te gaan.",

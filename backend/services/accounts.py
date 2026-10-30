@@ -314,3 +314,12 @@ def update_user(conn, actor: dict, user_id: str, role=None, user_group=None, sta
     audit(conn, actor["id"], "user_updated", {"user": user_id, "from": {k: target[k] for k in new}, "to": new})
     conn.commit()
     return public(by_id(conn, user_id))
+
+
+# PUBLIC_INTERFACE
+def colleagues(conn) -> list:
+    """Active accounts that may register complaints, as ``{id, name}`` (the registering user can be changed to one of them)."""
+    roles = [r for r, perms in get_config()["roles"].items() if "register" in perms]
+    marks = ",".join("?" * len(roles))
+    return [dict(r) for r in conn.execute(
+        f"SELECT id,name FROM users WHERE status='active' AND role IN ({marks}) ORDER BY name", roles)]
