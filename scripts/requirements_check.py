@@ -1,7 +1,8 @@
-"""Check FR-01 to FR-05 against a RUNNING app with a real account (no demo header), each at its acceptance criterion.
+"""Check FR-01 to FR-08 against a RUNNING app with a real account (no demo header), each at its acceptance criterion.
 
     python -m scripts.requirements_check --url http://127.0.0.1:8001 --email you@example.nl      # asks for the password (hidden)
-    python -m scripts.requirements_check --url ... --email ... --save                            # also saves 1 test complaint (FR-04 edits)
+    python -m scripts.requirements_check --url ... --email ... --save                            # also saves test complaints (FR-04 edits, FR-07 texts)
+    ... --rater-email owner@example.nl                                                           # also checks the rating screen's data as a process owner (FR-08)
 
 It signs in like the browser does (e-mail and password, bearer token). The account needs the employee role (or admin).
 FR-02 calls the model the app is configured with, ten times (synthetic emails). Without --save nothing is written
@@ -148,12 +149,53 @@ def fr05(api, customers):
     report("FR-05", "defaults documented per type and applied on type selection", not wrong, f"{len(cfg['types'])} types" + (f"; wrong: {wrong}" if wrong else "; all applied and documented"))
 
 
+def fr07(api, me, save):
+    if not save:
+        print("  [skip] FR-07 stored as typed: run with --save (it saves 8 test complaints)")
+        return
+    cases = json.loads((ROOT / "tests/acceptance/description_cases.json").read_text(encoding="utf-8"))["cases"]
+    card = api.call("GET", "/api/customers/search", params={"q": "100009"})[0]["candidates"][0]
+    bad = []
+    for c in cases:
+        saved, _ = api.call("POST", "/api/complaints", {"customer_id": card["customer_id"], "site_id": card["sites"][0]["id"], "channel": "phone",
+                            "complaint_type": "service", "root_cause": "missed", "description": c["text"], "language": c["language"]})
+        rec = api.call("GET", f"/api/complaints/{saved.get('id')}")[0] if saved.get("id") else {}
+        if rec.get("original_text") != c["text"] or rec.get("language") != c["language"]:
+            bad.append(c["name"])
+    long_refused = api.call("POST", "/api/complaints", {"customer_id": card["customer_id"], "channel": "phone", "complaint_type": "service",
+                            "root_cause": "missed", "description": "x" * 8001, "language": "en"})[0].get("_status")
+    report("FR-07", "Dutch and English stored exactly as typed", not bad and long_refused == 422,
+           f"{len(cases) - len(bad)} of {len(cases)} identical; 8001 characters -> {long_refused}" + (f"; differing: {bad}" if bad else ""))
+
+
+def fr08(api, rater):
+    from scripts.summary_eval import SITES, check
+    cases = json.loads((ROOT / "tests/acceptance/summary_cases.json").read_text(encoding="utf-8"))["cases"]
+    bad = []
+    for c in cases:
+        out, _ = api.call("POST", "/api/complaints/analyze", {"text": c["text"], "complaint_type": c["type"], "site_id": SITES.get(c.get("site")), "container": c.get("container")})
+        bad += [f"{c['id']}: {p}" for p in check(c, out)]
+    report("FR-08", "structured summary from the template (what/where/when/impact + type fields), nothing invented", not bad,
+           f"{len(cases) - len({b.split(':')[0] for b in bad})} of {len(cases)} sound" + (f"; {bad[:3]}" if bad else ""))
+    if not rater:
+        print("  [skip] FR-08 rating screen data: run with --rater-email (and CHECK_RATER_PASSWORD) to check it as a process owner")
+        return
+    sample, _ = rater.call("GET", "/api/evaluations/sample", params={"limit": 10})
+    items = sample.get("items", [])
+    shape = bool(items) and all({"what", "where", "when", "impact", "extras"} <= set(i["summary"] or {}) for i in items if i["summary"]) \
+        and not any(k in items[0] for k in ("root_cause", "complaint_type"))
+    no_vote, _ = rater.call("POST", "/api/evaluations", {"complaint_id": items[0]["id"]}) if items else ({}, 0)
+    report("FR-08", "process owner sees the labelled summary, blind; a rating needs an explicit choice", shape and no_vote.get("_status") == 422,
+           f"{len(items)} complaints to rate; empty rating refused ({no_vote.get('_status')}); no rating was written")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--url", default="http://127.0.0.1:8001")
     ap.add_argument("--email", required=True)
     ap.add_argument("--n", type=int, default=20)
     ap.add_argument("--save", action="store_true")
+    ap.add_argument("--rater-email", help="a process owner (evaluator) account to check the rating screen data")
     a = ap.parse_args()
     api = Api(a.url)
     health, _ = api.call("GET", "/health")
@@ -175,7 +217,16 @@ def main() -> int:
     if len(customers) < a.n:
         print(f"Only {len(customers)} seeded customers visible (need {a.n}); the account needs customer_data.")
         return 2
+    rater = None
+    if a.rater_email:
+        rater = Api(a.url)
+        rl, _ = rater.call("POST", "/api/auth/login", {"email": a.rater_email, "password": os.environ.get("CHECK_RATER_PASSWORD") or getpass.getpass(f"Password for {a.rater_email}: ")})
+        if not rl.get("token"):
+            print("Rater sign-in failed (a pending password change must be done in the browser first).")
+            return 2
+        rater.token = rl["token"]
     fr01(api, customers); fr02(api); fr03(api, customers); fr04(api, customers, me, a.save); fr05(api, customers)
+    fr07(api, me, a.save); fr08(api, rater)
     failed = [fr for fr, ok in RESULTS if not ok]
     print("\n" + ("All checks pass." if not failed else f"Failing: {sorted(set(failed))}"))
     return 1 if failed else 0

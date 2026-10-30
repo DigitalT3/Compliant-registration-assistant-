@@ -1,18 +1,12 @@
 """FR-07: a free-text description in Dutch or English is accepted and stored exactly as typed."""
+import json
+from pathlib import Path
+
 import pytest
 
 from tests.conftest import EMP
 
-CASES = {
-    "nl plain": ("nl", "De container bij onze locatie is vandaag niet geleegd. Dit is de derde keer deze maand."),
-    "nl accents": ("nl", "Café 'De Ruiter' – ëïü é è, €45,50 te veel gefactureerd; ½ container, 10% korting \"beloofd\"."),
-    "en plain": ("en", "The container at our depot was not emptied on Tuesday. It was missed again."),
-    "en quotes": ("en", "Driver said \"it's not my job\" & left; invoice #1234 <b>wrong</b>; SQL: '; DROP TABLE complaints;--"),
-    "spaces": ("en", "  leading spaces, double  inner  spaces, trailing spaces and tab\t  "),
-    "newlines": ("nl", "Regel 1\r\nRegel 2\n\nRegel 4 na lege regel\n"),
-    "emoji": ("en", "Bin overflowing 😡 – smells terrible 🤢 ü"),
-    "longest": ("nl", ("Dit is een lange klacht. " * 400)[:8000]),
-}
+CASES = {c["name"]: (c["language"], c["text"]) for c in json.loads((Path(__file__).parent / "description_cases.json").read_text(encoding="utf-8"))["cases"]}
 
 
 def _save(client, text, language):
