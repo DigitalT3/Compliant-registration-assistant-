@@ -80,7 +80,7 @@ def max_body_bytes() -> int:
 # PUBLIC_INTERFACE
 def abandon_after_minutes() -> int:
     """Idle minutes after which an active session counts as abandoned."""
-    return int(os.environ.get("ABANDON_AFTER_MINUTES", "1"))
+    return int(os.environ.get("ABANDON_AFTER_MINUTES", "30"))
 
 
 # PUBLIC_INTERFACE
