@@ -259,6 +259,7 @@ def _seed_history(conn, anchor) -> None:
 ANCHOR_KEY = "seed_anchor_applied"
 # dates in the synthetic data that are relative to the anchor, per table
 ANCHORED_COLUMNS = {"complaints": ("created", "registration_date"), "orders": ("date",), "contracts": ("valid_from", "valid_to"), "customers": ("created_at",)}
+SEEDED_ONLY = {"complaints": "is_seed=1", "orders": "source='seed'", "contracts": "source='seed'", "customers": "source='seed'"}   # records made in the app keep their real dates
 
 
 def _shift(value, delta):
@@ -277,7 +278,7 @@ def reanchor(today: datetime | None = None) -> int:
     """Move every date in the synthetic data forward so the seeded history sits relative to today instead of the fixed anchor.
 
     Used when the app runs on the real clock (``POC_CLOCK_MODE=real``): without it the seeded repeat scenarios would be days
-    out of step. Only whole days are moved, so the time of day is kept. The anchor already applied is remembered, so running it
+    out of step. Only the synthetic rows move (records saved in the app keep their real dates), and only whole days, so the time of day is kept. The anchor already applied is remembered, so running it
     again the same day changes nothing. Returns the number of days moved (negative moves back). No row is added or removed.
     """
     today = today or datetime.now(timezone.utc)
@@ -291,7 +292,7 @@ def reanchor(today: datetime | None = None) -> int:
         delta = timedelta(days=days)
         with db.pipeline(conn):
             for table, columns in ANCHORED_COLUMNS.items():
-                for r in conn.execute(f"SELECT id, {', '.join(columns)} FROM {table}").fetchall():
+                for r in conn.execute(f"SELECT id, {', '.join(columns)} FROM {table} WHERE {SEEDED_ONLY[table]}").fetchall():
                     values = [_shift(r[c], delta) for c in columns]
                     if values != [r[c] for c in columns]:
                         conn.execute(f"UPDATE {table} SET {', '.join(c + '=?' for c in columns)} WHERE id=?", (*values, r["id"]))

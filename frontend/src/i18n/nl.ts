@@ -12,6 +12,7 @@ export const nl: Record<string, string> = {
   "nav.about": "Over",
   "user": "Demo-gebruiker (geen echte login)",
   "language": "Taal",
+  "clock.waiting": "Start zodra je begint: je eerste klik of toets.",
   "clock.title": "Registratietijd",
   "clock.final": "Geregistreerd in",
   "step.find_customer": "Klant zoeken",

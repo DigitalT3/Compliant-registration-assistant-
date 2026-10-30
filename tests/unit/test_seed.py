@@ -59,3 +59,16 @@ def test_reanchor_moves_the_dates_by_whole_days_and_back(fresh_db):
     assert after["valid_to"][0] == (__import__("datetime").date.fromisoformat(before["valid_to"][0]) + timedelta(days=5)).isoformat()
     assert seed.reanchor(anchor + timedelta(days=5, hours=9)) == 0          # the same day again: nothing moves
     assert seed.reanchor(anchor) == -5 and snapshot() == before             # and back, exactly
+
+
+def test_reanchor_leaves_records_made_in_the_app_alone(fresh_db):
+    from datetime import timedelta
+    from backend import db
+    with db.connect() as conn:
+        conn.execute("UPDATE complaints SET is_seed=0 WHERE id='COM-SEED-1'")           # stands for a complaint saved by a tester
+        conn.commit()
+        mine = conn.execute("SELECT created FROM complaints WHERE id='COM-SEED-1'").fetchone()["created"]
+    seed.reanchor(db.seed_anchor() + timedelta(days=3))
+    with db.connect() as conn:
+        assert conn.execute("SELECT created FROM complaints WHERE id='COM-SEED-1'").fetchone()["created"] == mine
+        assert conn.execute("SELECT created FROM complaints WHERE id='COM-SEED-2'").fetchone()["created"] != mine

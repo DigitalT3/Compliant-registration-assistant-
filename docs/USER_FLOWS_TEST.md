@@ -21,7 +21,7 @@ New accounts use a temporary password and ask for a new one at first sign-in.
 
 The real app runs on the real clock (`POC_CLOCK_MODE=real` in `.env`), so the "Checked" time and the saved record's timestamp are the real time. The synthetic dates were moved forward to today with `python -m backend.seed --reanchor` (adds and removes nothing; run it again on a later day to keep the seeded repeat cases in step, and it does nothing if already done that day).
 
-Expect one difference in flow 9: **T18** (a complaint exactly 60 days old) only shows as a repeat when the check runs at or before 12:00 on the day you re-anchored, because the real time of day moves the 60-day edge. The automated tests run it on the fixed clock; use those for the boundary cases (`python -m pytest tests/acceptance/test_repeat_fr12_13.py`).
+Two scenarios in flow 9 sit right on the edge of the 60-day window and are only valid on the day you re-anchor: **T20** (59 days old, a repeat) and **T18** (exactly 60 days, a repeat only when the check runs before 12:00 that day). The others stay valid for weeks (T10 about 55 more days, T14 about 40) or indefinitely (the no-repeat cases). Run `python -m backend.seed --reanchor` on the test day. The automated tests check all eleven cases on a fixed clock and stay valid on any day (`python -m pytest tests/acceptance/test_repeat_fr12_13.py`).
 
 ## Order matters
 
@@ -119,7 +119,7 @@ Each result shows the earlier complaint's date, status, cause and the reason it 
 3. Export records CSV. Expect: one row per record in the target structure.
 
 ### 12. The log per registration (FR-15)
-1. While registering as an employee, watch the clock in the corner: it starts when you start and shows time per step.
+1. While registering as an employee, watch the clock in the corner: it reads 00:00 until your first click or key press, then runs and shows time per step.
 2. After saving, open the record in the Audit Trail. Expect: time per step that adds up to the total, fields prefilled or defaulted, the suggestions shown, and for each whether you kept or changed it.
 3. Start a registration, leave without saving, then look at the unsaved registrations view. Expect: it is listed with its log.
 

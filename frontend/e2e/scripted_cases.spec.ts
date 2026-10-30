@@ -776,9 +776,11 @@ test("T47 the About page lists what is still to be agreed and who confirms it", 
   await expect(page.getByRole("row", { name: /taxonomy.*Glenn \/ process owners/ })).toBeVisible();
 });
 
-test("T48 the registration clock starts when the form opens, so finding the customer counts", async ({ page, request }) => {
+test("T48 the registration clock starts at the first click or key, so finding the customer counts but waiting before it does not", async ({ page, request }) => {
   await openApp(page);
-  await page.waitForTimeout(3000);                                                                // the employee takes a moment before searching
+  await page.waitForTimeout(4000);                                                                // the screen sits open: not counted
+  await page.getByLabel(SEARCH).click();                                                          // the employee begins
+  await page.waitForTimeout(3000);                                                                // taking a moment to search: counted
   await search(page, "100009");
   await selectFirst(page);
   await page.getByLabel("Site", { exact: true }).selectOption("C009-S1");
@@ -786,6 +788,7 @@ test("T48 the registration clock starts when the form opens, so finding the cust
   const rows = await (await request.get(`${API}/api/analytics/sessions`, { headers: ADMIN, params: { page_size: 1 } })).json();
   const mine = rows.items[0];
   expect(mine.step_seconds.find_customer).toBeGreaterThanOrEqual(3);                              // not the ~1 s of the lookup call
+  expect(mine.step_seconds.find_customer).toBeLessThan(7.5);                                      // and without the 4 s the screen sat open before the first click
   expect(mine.first_field_seconds).toBeGreaterThanOrEqual(3);                                      // lookup filled the first field after the search
   await openApp(page, "demo.admin");
   await page.getByRole("button", { name: "Dashboard" }).click();
@@ -1185,11 +1188,15 @@ test("T60 FR-15: a plain-form registration has a complete log too, without sugge
 test("T61 live registration clock: visible from the start, ticks, shows the time per step, stops at save and matches the logged time", async ({ page, request }) => {
   await openApp(page);
   const clock = page.getByRole("timer");
-  await expect(clock).toBeVisible();                                                                 // there from the moment the form opens, before a customer is chosen
+  await expect(clock).toBeVisible();                                                                 // shown from the moment the form opens, at 00:00
   const secs = async () => { const [m, s] = (await clock.locator(".reg-clock-total b").innerText()).split(":").map(Number); return m * 60 + s; };
-  const first = await secs();
   await page.waitForTimeout(2300);
-  expect(await secs()).toBeGreaterThanOrEqual(first + 2);                                            // it is running
+  expect(await secs()).toBe(0);                                                                      // it waits: opening the screen does not start it
+  await expect(clock).toContainText("Starts when you begin");
+  await page.getByLabel(SEARCH).click();                                                             // the first interaction starts it
+  await page.waitForTimeout(2300);
+  expect(await secs()).toBeGreaterThanOrEqual(2);                                                    // it is running
+  await expect(clock).not.toContainText("Starts when you begin");
   await expect(clock.locator("li.now")).toContainText("Find customer");
   await search(page, "100013");
   await selectFirst(page);
@@ -1218,7 +1225,7 @@ test("T61 live registration clock: visible from the start, ticks, shows the time
   const log = (await (await request.get(`${API}/api/audit/records/${id}`, { headers: ADMIN })).json()).log;
   expect(Math.abs(log.total_seconds - finalSecs)).toBeLessThanOrEqual(3);
   await page.getByRole("button", { name: "New registration" }).click();
-  await expect(page.getByRole("timer").locator("li.now")).toContainText("Find customer");              // a new registration starts a new clock
+  await expect(page.getByRole("timer")).toContainText("Starts when you begin");                       // a new registration starts a new clock, waiting for the first click
 });
 
 test("T62 the clock can be switched off by one setting", async ({ page }) => {

@@ -95,8 +95,9 @@ export default function Register({ onViewHistory, meName, config }: { onViewHist
     if (s.step === 1) get<any>("/api/users/colleagues").then((r) => setColleagues(r.items)).catch(() => setColleagues([]));
   }, [s.step]);
 
-  // The registration clock starts when the form is opened (a new complaint), not when the customer is chosen.
-  useEffect(() => { if (!s.sessionId && !s.openedAt) set({ openedAt: Date.now() }); }, [s.sessionId, s.openedAt]);   // eslint-disable-line react-hooks/exhaustive-deps
+  // The registration clock starts at the first thing the employee does on the form (a click or a key press; the automatic focus of the search box does not count), not when the
+  // screen merely opens and not when the customer is chosen. Until then it shows 00:00.
+  const startClock = () => { if (!s.sessionId && !s.openedAt && !s.saved) set({ openedAt: Date.now() }); };
 
   // The registration clock: from the moment the form opens to the moment it is saved. Each visit to a step counts at most the
   // same idle cap the server uses, so a forgotten tab does not run on; going back adds the visits up.
@@ -116,9 +117,10 @@ export default function Register({ onViewHistory, meName, config }: { onViewHist
   const total = Object.values(perStep).reduce((a, b) => a + b, 0);
   const mmss = (sec: number) => `${String(Math.floor(sec / 60)).padStart(2, "0")}:${String(Math.floor(sec % 60)).padStart(2, "0")}`;
   const current = s.saved || s.visits.length === 0 ? null : s.visits[s.visits.length - 1].step;
-  const clock = showTimer && s.visits.length > 0 && (
+  const clock = showTimer && (
     <aside className={`reg-clock${s.saved ? " stopped" : ""}`} role="timer" aria-label={t("clock.title")} aria-live="off">
       <div className="reg-clock-total"><small>{s.saved ? t("clock.final") : t("clock.title")}</small><b>{mmss(total)}</b></div>
+      {s.visits.length === 0 && <p className="muted"><small>{t("clock.waiting")}</small></p>}
       <ol>{STEPS.map((k) => (
         <li key={k} className={k === current ? "now" : undefined}><span>{t(`step.${k}`)}</span><span>{perStep[k] > 0 || k === current ? mmss(perStep[k]) : "–"}</span></li>
       ))}</ol>
@@ -429,7 +431,7 @@ export default function Register({ onViewHistory, meName, config }: { onViewHist
   );
 
   return (
-    <section>
+    <section onPointerDownCapture={startClock} onKeyDownCapture={startClock}>
       <div className="reg-top">
         <ol className="stepper" aria-label="steps">
           {STEPS.map((k, i) => <li key={k} className={i === s.step ? "current" : i < s.step ? "done" : ""} aria-current={i === s.step ? "step" : undefined}>{i + 1}. {t(`step.${k}`)}</li>)}

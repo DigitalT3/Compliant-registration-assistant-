@@ -13,6 +13,7 @@ export const en: Record<string, string> = {
   "user": "Demo user (not real login)",
   "language": "Language",
   "clock.title": "Registration time",
+  "clock.waiting": "Starts when you begin: your first click or key.",
   "clock.final": "Registered in",
   "step.find_customer": "Find customer",
   "step.review_details": "Review details",
