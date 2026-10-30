@@ -14,6 +14,8 @@ export default function AuditTrail({ config }: { config: any }) {
   const [open, setOpen] = useState<string | null>(null);
   const [detail, setDetail] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
+  const [view, setView] = useState<"saved" | "unsaved">("saved");
+  const [unsaved, setUnsaved] = useState<any>(null);
   const size = 15;
   const fail = (e: unknown) => setError(e instanceof ApiError ? e.message : String(e));
 
@@ -21,6 +23,10 @@ export default function AuditTrail({ config }: { config: any }) {
     get<any>("/api/audit/records", { q: term || undefined, include_seed: includeSeed, page, page_size: size })
       .then((r) => { setItems(r.items); setTotal(r.total); setError(null); }).catch(fail);
   }, [term, includeSeed, page]);
+
+  useEffect(() => {
+    if (view === "unsaved") get<any>("/api/audit/unsaved", { page, page_size: size }).then((r) => { setUnsaved(r); setError(null); }).catch(fail);
+  }, [view, page]);
 
   const toggle = (id: string) => {
     if (open === id) { setOpen(null); setDetail(null); return; }
@@ -32,7 +38,7 @@ export default function AuditTrail({ config }: { config: any }) {
   const LABELS: Record<string, string> = { customer_id: t("f.customer_name"), root_cause: t("col.cause"), description: t("description"), summary: t("summary") };
   const field = (k: string) => LABELS[k] || (t(`f.${k}`) === `f.${k}` ? k : t(`f.${k}`));
   const action = (a: string) => (t(`audit.action.${a}`) === `audit.action.${a}` ? a.replace(/_/g, " ") : t(`audit.action.${a}`));
-  const pages = Math.max(1, Math.ceil(total / size));
+  const pages = Math.max(1, Math.ceil((view === "unsaved" ? (unsaved?.total ?? 0) : total) / size));
   const cell = (v: any) => (v === null || v === undefined || v === "" ? "–" : typeof v === "object" ? JSON.stringify(v) : String(v));
 
   return (
@@ -40,6 +46,32 @@ export default function AuditTrail({ config }: { config: any }) {
       <h2>{t("audit.title")}</h2>
       <p className="muted">{t("audit.intro")}</p>
       {error && <p className="error" role="alert">{t("error")}: {error}</p>}
+      <div className="inline" role="tablist">
+        <button role="tab" aria-selected={view === "saved"} className={view === "saved" ? "" : "secondary"} onClick={() => { setView("saved"); setPage(1); }}>{t("audit.view.saved")}</button>
+        <button role="tab" aria-selected={view === "unsaved"} className={view === "unsaved" ? "" : "secondary"} onClick={() => { setView("unsaved"); setPage(1); }}>{t("audit.view.unsaved")}</button>
+      </div>
+      {view === "unsaved" && (
+        <>
+          <p className="muted">{t("audit.unsaved.note")}</p>
+          <p className="muted" role="status">{t("audit.unsaved.count", { n: unsaved?.total ?? 0 })}</p>
+          <div className="table-scroll"><table>
+            <thead><tr><th>{t("ds.when")}</th><th>{t("ds.by")}</th><th>{t("audit.col.mode")}</th><th>{t("audit.col.last")}</th>
+              {["find_customer", "review_details", "describe_complaint", "classify", "repeat_save"].map((k) => <th key={k}>{t(`step.${k}`)} (s)</th>)}<th>{t("audit.col.total")}</th><th>{t("audit.col.status")}</th></tr></thead>
+            <tbody>{(unsaved?.items || []).map((r: any) => (
+              <tr key={r.id}>
+                <td>{String(r.started).replace("T", " ").slice(0, 19)}<br /><small>{r.id.slice(0, 8)}</small></td>
+                <td>{r.actor_name || r.actor}</td>
+                <td>{t(`mode.${r.mode}`)}{r.participant_id && <><br /><small>{r.participant_id}{r.scenario && ` · ${r.scenario}`}</small></>}</td>
+                <td>{r.last_step ? t(`step.${r.last_step}`) : "–"}</td>
+                {r.steps.map((st: any) => <td key={st.step}>{st.seconds > 0 ? st.seconds : "–"}</td>)}
+                <td>{r.total_seconds}</td>
+                <td>{t(`audit.status.${r.status}`)}{r.failure_status && ` (${r.failure_status})`}</td>
+              </tr>))}</tbody>
+          </table></div>
+          {(unsaved?.items || []).length === 0 && <p className="empty">{t("audit.unsaved.none")}</p>}
+        </>
+      )}
+      {view === "saved" && <>
       <div className="filters">
         <form className="inline" onSubmit={(e: FormEvent) => { e.preventDefault(); setPage(1); setTerm(q.trim()); }}>
           <label>{t("audit.search")}<input value={q} maxLength={100} onChange={(e) => setQ(e.target.value)} /></label>
@@ -91,7 +123,8 @@ export default function AuditTrail({ config }: { config: any }) {
                   ? <span className="badge prov-prefilled">{t("audit.log.complete")}</span> : <span className="badge prov-default">{t("audit.log.incomplete")}</span>)}</h3>
                 {!detail.log.applicable ? <p className="empty">{t("audit.no_origins")}</p> : (<>
                   {detail.log.missing.length > 0 && <p className="warn">{t("audit.log.missing")}: {detail.log.missing.join(", ")}</p>}
-                  <p className="muted">{t(`mode.${detail.log.mode}`)}{detail.log.participant && ` · ${detail.log.participant}`}{detail.log.scenario && ` · ${detail.log.scenario}`} · {String(detail.log.started || "").replace("T", " ").slice(0, 19)} → {String(detail.log.ended || "").replace("T", " ").slice(0, 19)} · {t("audit.log.total", { s: detail.log.total_seconds })}</p>
+                  <p className="muted">{t(`mode.${detail.log.mode}`)}{detail.log.participant && ` · ${detail.log.participant}`}{detail.log.scenario && ` · ${detail.log.scenario}`} · {String(detail.log.started || "").replace("T", " ").slice(0, 19)} → {String(detail.log.ended || "").replace("T", " ").slice(0, 19)} · {t("audit.log.total", { s: detail.log.total_seconds })}
+                    {detail.log.time_check?.result === "capped" && ` · ${t("audit.log.capped")}`}</p>
                   <h4>{t("audit.log.steps")}</h4>
                   <table><thead><tr><th>{t("audit.col.step")}</th><th>{t("audit.log.seconds")}</th><th>{t("audit.log.visits")}</th></tr></thead>
                     <tbody>{detail.log.steps.map((st: any) => <tr key={st.step}><td>{t(`step.${st.step}`)}</td><td>{st.seconds}</td><td>{st.visits}</td></tr>)}</tbody></table>
@@ -101,7 +134,7 @@ export default function AuditTrail({ config }: { config: any }) {
                   {detail.log.edits.length > 0 && <p>{t("audit.log.edits")}: {detail.log.edits.map((e: any) => `${field(e.field)} → ${t(`prov.${e.origin}`)}`).join(", ")}</p>}
                   <h4>{t("audit.log.suggestions")}</h4>
                   {detail.log.suggestions.causes.length === 0 ? <p className="empty">{t("audit.log.none")}</p> : (<>
-                    <p>{t("f.complaint_type")}: <b>{name(config.types, detail.log.suggestions.complaint_type)}</b></p>
+                    <p>{t("f.complaint_type")}: <b>{name(config.types, detail.log.suggestions.complaint_type)}</b> — {detail.log.suggestions.type_result === "kept" ? t("audit.type.kept") : t("audit.type.changed", { to: name(config.types, detail.log.suggestions.saved_type) })}</p>
                     <table><thead><tr><th>{t("col.cause")}</th><th>%</th><th>{t("ds.reason")}</th></tr></thead>
                       <tbody>{detail.log.suggestions.causes.map((c: any) => (
                         <tr key={c.root_cause_id} className={c.root_cause_id === detail.log.suggestions.selected_cause ? "selected" : undefined}>
@@ -153,6 +186,7 @@ export default function AuditTrail({ config }: { config: any }) {
           )}
         </div>
       )}
+      </>}
       <div className="pager">
         <button className="secondary" disabled={page <= 1} onClick={() => setPage(page - 1)} aria-label={t("audit.prev")}>←</button>
         <span>{t("page", { p: page, n: pages })}</span>

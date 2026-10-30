@@ -137,3 +137,29 @@ def test_rating_samples_are_not_test_registrations(client):
 def test_the_screen_clock_setting_and_idle_cap_are_published(client):
     cfg = client.get("/api/config").json()
     assert cfg["ui"] == {"show_timer": True} and cfg["step_idle_cap_seconds"] == 600             # the clock follows the same cap as the logged time
+
+
+def test_the_suggested_type_is_recorded_as_kept_or_changed(client):
+    kept = _log(client, _registration(client))["suggestions"]
+    assert (kept["complaint_type"], kept["saved_type"], kept["type_result"]) == ("service", "service", "kept")
+    cid = _registration(client)
+    with db.connect() as conn:
+        conn.execute("UPDATE complaints SET complaint_type='billing' WHERE id=?", (cid,))               # the employee saved another type than the one suggested
+        conn.commit()
+    s = _log(client, cid)["suggestions"]
+    assert (s["type_result"], s["saved_type"]) == ("changed", "billing")
+    assert _log(client, _registration(client, mode="plain"))["suggestions"]["type_result"] == "no_suggestion"
+
+
+def test_the_time_per_step_adds_up_to_the_registration_and_a_gap_is_reported(client):
+    cid = _registration(client)
+    tc = _log(client, cid)["time_check"]
+    assert tc["result"] == "consistent" and tc["gap"] <= 3 and tc["session_seconds"] >= tc["steps_seconds"] - 0.5
+    with db.connect() as conn:                                                                         # a step that vanished from the log leaves an unexplained hole
+        sid = conn.execute("SELECT session_id FROM complaints WHERE id=?", (cid,)).fetchone()[0]
+        conn.execute("UPDATE sessions SET started=? WHERE id=?", ("2026-10-30T00:00:00+00:00", sid))
+        conn.commit()
+    bad = _log(client, cid)
+    assert bad["time_check"]["result"] in ("gap", "capped")
+    if bad["time_check"]["result"] == "gap":
+        assert bad["complete"] is False and any(m.startswith("time_does_not_add_up") for m in bad["missing"])

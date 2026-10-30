@@ -150,6 +150,26 @@ def log_flags(conn, rows: list) -> dict:
     return out
 
 
+def _time_check(events: list, ended: str | None, started: str, steps_seconds: float) -> dict:
+    """Do the times per step add up to the registration's total? Gaps beyond a few seconds must be explained by the idle cap."""
+    from datetime import datetime
+    cap = get_config()["metrics"].get("step_idle_cap_seconds") or 0
+    longest, cur = 0.0, None
+    for e in events:
+        if e["event_type"] == "step_entered":
+            if cur is not None:
+                longest = max(longest, (datetime.fromisoformat(e["at"]) - datetime.fromisoformat(cur)).total_seconds())
+            cur = e["at"]
+    if cur is not None and ended:
+        longest = max(longest, (datetime.fromisoformat(ended) - datetime.fromisoformat(cur)).total_seconds())
+    total = (datetime.fromisoformat(ended) - datetime.fromisoformat(started)).total_seconds() if ended else None
+    if total is None:
+        return {"session_seconds": None, "steps_seconds": round(steps_seconds, 1), "result": "open"}
+    gap = total - steps_seconds
+    result = "consistent" if gap <= 3 else "capped" if cap and longest > cap else "gap"
+    return {"session_seconds": round(total, 1), "steps_seconds": round(steps_seconds, 1), "gap": round(gap, 1), "result": result}
+
+
 def _result_of_cause(selected, shown):
     if not shown:
         return "no_suggestion"
@@ -186,6 +206,9 @@ def registration_log(conn, rec: dict) -> dict:
         ai_ops[r["operation"]] = ai_ops.get(r["operation"], 0) + 1
     tracked = len(get_config()["metrics"]["tracked_fields"])
     bad = _missing(sess["mode"], sess["status"], counts, len(finals), len(start), ai_ops, tracked)
+    tcheck = _time_check(events, sess.get("ended"), sess["started"], sum(seconds.values()))
+    if tcheck["result"] == "gap":
+        bad.append(f"time_does_not_add_up:{tcheck['gap']}s")
 
     def last(*ops):
         return next((r for r in reversed(ai_rows) if r["operation"] in ops and r["status"] == "ok"), None)
@@ -212,15 +235,43 @@ def registration_log(conn, rec: dict) -> dict:
         "applicable": True, "complete": not bad, "missing": bad, "mode": sess["mode"], "participant": sess.get("participant_id"),
         "scenario": sess.get("scenario"), "started": sess["started"], "ended": sess.get("ended"), "status": sess["status"],
         "steps": [{"step": st, "seconds": seconds.get(st, 0), "visits": counts.get((st, "step_entered"), 0)} for st in sessions_svc.STEPS],
-        "total_seconds": round(sum(seconds.values()), 1),
+        "total_seconds": round(sum(seconds.values()), 1), "time_check": tcheck,
         "prefilled_at_start": {o: sum(1 for e in start if e["origin"] == o) for o in ("prefilled", "default")},
         "fields_at_save": origins, "edits": edits,
         "suggestions": {
             "ai_calls": [{"operation": r["operation"], "status": r["status"], "error": r["error_category"], "ms": r["duration_ms"], "model": r["model"]}
                          for r in ai_rows if r["operation"] != "classification_outcome"],
-            "complaint_type": detail(cls).get("complaint_type"), "causes": causes, "selected_cause": selected,
+            "complaint_type": detail(cls).get("complaint_type"), "saved_type": rec.get("complaint_type"),
+            "type_result": ("no_suggestion" if not detail(cls).get("complaint_type")
+                            else "kept" if detail(cls).get("complaint_type") == rec.get("complaint_type") else "changed"),
+            "causes": causes, "selected_cause": selected,
             "cause_result": _result_of_cause(selected, [c["root_cause_id"] for c in causes]),
             "in_top3": outcome["in_top3"] if outcome else None,
             "summary_suggested": suggested, "summary_changed_fields": changed if suggested is not None else None,
             "summary_result": None if suggested is None else ("changed" if changed else "kept")},
     }
+
+
+# PUBLIC_INTERFACE
+def unsaved(conn, page: int, size: int) -> dict:
+    """Registrations that were started but not saved (abandoned, failed or still open), with what was logged up to where they stopped."""
+    sessions_svc.sweep_abandoned(conn)
+    where = "s.status<>'saved' AND s.id NOT IN (SELECT session_id FROM complaints WHERE session_id IS NOT NULL)"
+    total = conn.execute(f"SELECT count(*) FROM sessions s WHERE {where}").fetchone()[0]
+    rows = conn.execute(
+        "SELECT s.id, s.actor, s.mode, s.participant_id, s.scenario, s.started, s.ended, s.status, s.failure_status, u.name AS actor_name "
+        f"FROM sessions s LEFT JOIN users u ON u.id=s.actor WHERE {where} ORDER BY s.started DESC, s.id DESC LIMIT ? OFFSET ?",
+        (size, (page - 1) * size)).fetchall()
+    items = []
+    for r in rows:
+        d = dict(r)
+        events = [dict(e) for e in conn.execute("SELECT step, event_type, at FROM step_events WHERE session_id=? ORDER BY id", (d["id"],))]
+        seconds = sessions_svc.step_durations(events, d["ended"])
+        reached = [sessions_svc.LEGACY_STEPS.get(e["step"], e["step"]) for e in events if e["event_type"] == "step_entered"]
+        d["last_step"] = reached[-1] if reached else None
+        d["steps"] = [{"step": st, "seconds": seconds.get(st, 0)} for st in sessions_svc.STEPS]
+        d["total_seconds"] = round(sum(seconds.values()), 1)
+        d["fields_logged"] = conn.execute("SELECT count(*) FROM field_events WHERE session_id=?", (d["id"],)).fetchone()[0]
+        d["ai_calls"] = conn.execute("SELECT count(*) FROM ai_events WHERE session_id=?", (d["id"],)).fetchone()[0]
+        items.append(d)
+    return {"items": items, "total": total, "page": page, "page_size": size}

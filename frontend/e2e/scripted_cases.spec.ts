@@ -1233,3 +1233,26 @@ test("T62 the clock can be switched off by one setting", async ({ page }) => {
   await expect(page.getByText("Find customer").first()).toBeVisible();
   await expect(page.getByRole("timer")).toHaveCount(0);
 });
+
+test("T63 FR-15: a registration that was started but not saved is listed on the Audit Trail with its log", async ({ page, request }) => {
+  const emp = { "X-Demo-User": "demo.emp.a1" };
+  const sid = (await (await request.post(`${API}/api/sessions`, { headers: emp, data: { mode: "assistant", participant_id: "P-63" } })).json()).session_id;
+  const card = (await (await request.get(`${API}/api/customers/search?q=100013`, { headers: emp })).json()).candidates[0];
+  await request.post(`${API}/api/prefill`, { headers: emp, data: { customer_id: card.customer_id, origin: "search", guess_site: true, session_id: sid } });
+  for (const [a, b] of [["find_customer", "review_details"], ["review_details", "describe_complaint"]]) {
+    await request.post(`${API}/api/sessions/${sid}/events`, { headers: emp, data: { type: "step_completed", step: a } });
+    await request.post(`${API}/api/sessions/${sid}/events`, { headers: emp, data: { type: "step_entered", step: b } });
+  }
+  await request.post(`${API}/api/sessions/${sid}/complete`, { headers: emp, data: { outcome: "abandoned" } });
+
+  await openApp(page, "demo.admin");
+  await page.getByRole("button", { name: "Audit Trail" }).click();
+  await page.getByRole("tab", { name: "Registrations not saved" }).click();
+  await expect(page.getByRole("status")).toContainText(/\d+ registrations not saved/);
+  const row = page.locator("tbody tr", { hasText: sid.slice(0, 8) });
+  await expect(row).toContainText("Abandoned");
+  await expect(row).toContainText("Describe complaint");                                              // where it stopped
+  await expect(row).toContainText("P-63");
+  await page.getByRole("tab", { name: "Saved records" }).click();
+  await expect(page.getByRole("status")).toContainText(/saved records/);
+});

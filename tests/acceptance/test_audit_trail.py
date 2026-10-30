@@ -90,3 +90,21 @@ def test_the_export_is_the_whole_store_in_the_target_field_names_and_is_logged(c
 def test_a_description_that_looks_like_a_formula_is_neutralised_in_the_export(client):
     _register(client, description="=HYPERLINK(\"http://example.com\")")
     assert "'=HYPERLINK" in client.get("/api/export/records.csv", headers=ADMIN).text
+
+
+def test_registrations_that_were_started_but_not_saved_are_listed_with_their_log(client):
+    sid = client.post("/api/sessions", headers=EMP, json={"mode": "assistant", "participant_id": "P-9", "scenario": "T1"}).json()["session_id"]
+    card = client.get("/api/customers/search", params={"q": "100009"}, headers=EMP).json()["candidates"][0]
+    client.post("/api/prefill", headers=EMP, json={"customer_id": card["customer_id"], "origin": "search", "guess_site": True, "session_id": sid})
+    for a, b in (("find_customer", "review_details"), ("review_details", "describe_complaint")):
+        client.post(f"/api/sessions/{sid}/events", headers=EMP, json={"type": "step_completed", "step": a})
+        client.post(f"/api/sessions/{sid}/events", headers=EMP, json={"type": "step_entered", "step": b})
+    client.post(f"/api/sessions/{sid}/complete", headers=EMP, json={"outcome": "abandoned"})
+    out = client.get("/api/audit/unsaved", headers=ADMIN).json()
+    row = next(r for r in out["items"] if r["id"] == sid)
+    assert (row["status"], row["mode"], row["participant_id"], row["scenario"], row["last_step"]) == ("abandoned", "assistant", "P-9", "T1", "describe_complaint")
+    assert [s["step"] for s in row["steps"]] == ["find_customer", "review_details", "describe_complaint", "classify", "repeat_save"]
+    assert row["fields_logged"] >= 9 and row["actor_name"] == "Demo Employee A1"
+    assert client.get("/api/audit/unsaved", headers=EMP).status_code == 403
+    saved = _register(client)                                                              # a saved registration is not listed there
+    assert saved and all(r["id"] != client.get(f"/api/audit/records/{saved}", headers=ADMIN).json()["log"].get("session") for r in client.get("/api/audit/unsaved", headers=ADMIN).json()["items"])

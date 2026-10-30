@@ -17,6 +17,13 @@ def list_records(q: str | None = Query(None, max_length=100), include_seed: bool
         return audit_trail.records(conn, q, include_seed, page, page_size)
 
 
+@router.get("/api/audit/unsaved", summary="Registrations that were started but not saved, with their log (administrators)")
+def list_unsaved(page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100), user: dict = Depends(require("audit"))):
+    """Abandoned, failed or still-open registrations: who, mode, the time per step up to where they stopped."""
+    with connection() as conn:
+        return audit_trail.unsaved(conn, page, page_size)
+
+
 @router.get("/api/audit/records/{complaint_id}", summary="One record: target structure, field origins, repeat evidence, audit events")
 def get_record(complaint_id: str, user: dict = Depends(require("audit"))):
     """The saved record in the target field structure and everything recorded about how it was made."""
