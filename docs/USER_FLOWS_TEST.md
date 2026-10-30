@@ -17,6 +17,12 @@ Start: `API_PORT=8001 scripts/run_demo.sh`, then open the address it prints. All
 
 New accounts use a temporary password and ask for a new one at first sign-in.
 
+## The clock
+
+The real app runs on the real clock (`POC_CLOCK_MODE=real` in `.env`), so the "Checked" time and the saved record's timestamp are the real time. The synthetic dates were moved forward to today with `python -m backend.seed --reanchor` (adds and removes nothing; run it again on a later day to keep the seeded repeat cases in step, and it does nothing if already done that day).
+
+Expect one difference in flow 9: **T18** (a complaint exactly 60 days old) only shows as a repeat when the check runs at or before 12:00 on the day you re-anchored, because the real time of day moves the 60-day edge. The automated tests run it on the fixed clock; use those for the boundary cases (`python -m pytest tests/acceptance/test_repeat_fr12_13.py`).
+
 ## Order matters
 
 Every saved complaint becomes history that the repeat rule can see. So:

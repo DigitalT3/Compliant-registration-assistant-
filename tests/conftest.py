@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 
 # Tests never call a real model, whatever .env says (db.py loads .env on import).
 os.environ["LLM_PROVIDER"] = ""
+os.environ["POC_CLOCK_MODE"] = "fixed"      # .env may select the real clock; the scripted scenarios need the fixed one
 os.environ["AI_PROVIDER"] = "mock"
 os.environ["AI_TIMEOUT_S"] = "3.5"
 

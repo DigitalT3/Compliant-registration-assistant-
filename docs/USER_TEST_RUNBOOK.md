@@ -17,6 +17,10 @@ The synthetic data shows that the tool works. These targets need real people, so
 
 The Readout page gathers these for Glenn's go, adjust or stop decision.
 
+## The clock
+
+For the timed sessions the app must run on the real clock (`POC_CLOCK_MODE=real`), so every saved record carries its real time. With the fixed clock every record gets the same timestamp. After changing it, restart the app. Run `python -m backend.seed --reanchor` once on the day if the repeat scenarios are part of the test.
+
 ## Before the test day
 
 1. **Clean database.** Run `scripts/run_usertest.sh`. It uses its own set of tables (schema `usertest`) with only the synthetic history, so earlier practice records can't skew the figures. Do not register practice complaints in it; practise in the normal data. See `docs/USER_TEST_DATABASE.md`.

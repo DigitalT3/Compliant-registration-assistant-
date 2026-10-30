@@ -15,7 +15,7 @@ import os
 import random
 import sqlite3
 import sys
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from . import db
@@ -256,6 +256,51 @@ def _seed_history(conn, anchor) -> None:
     _insert_history(conn, rows + _twelve_month_history())
 
 
+ANCHOR_KEY = "seed_anchor_applied"
+# dates in the synthetic data that are relative to the anchor, per table
+ANCHORED_COLUMNS = {"complaints": ("created", "registration_date"), "orders": ("date",), "contracts": ("valid_from", "valid_to"), "customers": ("created_at",)}
+
+
+def _shift(value, delta):
+    """Move an ISO date or date-time by ``delta``; anything else is left alone."""
+    if not value:
+        return value
+    try:
+        moved = datetime.fromisoformat(value) + delta
+    except (TypeError, ValueError):
+        return value
+    return moved.date().isoformat() if len(value) == 10 else moved.isoformat()
+
+
+# PUBLIC_INTERFACE
+def reanchor(today: datetime | None = None) -> int:
+    """Move every date in the synthetic data forward so the seeded history sits relative to today instead of the fixed anchor.
+
+    Used when the app runs on the real clock (``POC_CLOCK_MODE=real``): without it the seeded repeat scenarios would be days
+    out of step. Only whole days are moved, so the time of day is kept. The anchor already applied is remembered, so running it
+    again the same day changes nothing. Returns the number of days moved (negative moves back). No row is added or removed.
+    """
+    today = today or datetime.now(timezone.utc)
+    db.initialize()
+    with db.connect() as conn:
+        row = conn.execute("SELECT value FROM app_settings WHERE key=?", (ANCHOR_KEY,)).fetchone()
+        applied = datetime.fromisoformat(json.loads(row[0]) if row else db.config()["seed"]["anchor_date"])
+        days = (today.date() - applied.date()).days
+        if days == 0:
+            return 0
+        delta = timedelta(days=days)
+        with db.pipeline(conn):
+            for table, columns in ANCHORED_COLUMNS.items():
+                for r in conn.execute(f"SELECT id, {', '.join(columns)} FROM {table}").fetchall():
+                    values = [_shift(r[c], delta) for c in columns]
+                    if values != [r[c] for c in columns]:
+                        conn.execute(f"UPDATE {table} SET {', '.join(c + '=?' for c in columns)} WHERE id=?", (*values, r["id"]))
+            conn.execute("INSERT INTO app_settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                         (ANCHOR_KEY, json.dumps((applied + delta).isoformat())))
+        conn.commit()
+    return days
+
+
 # PUBLIC_INTERFACE
 def add_history() -> int:
     """Top up an already seeded database with the 12-month history (idempotent); returns the number of rows added."""
@@ -356,9 +401,10 @@ def main(argv=None) -> int:
     p.add_argument("--reset", action="store_true", help="DESTRUCTIVE: drop all PoC tables and reseed")
     p.add_argument("--seed", action="store_true", help="seed only if the database is empty")
     p.add_argument("--fingerprint", action="store_true", help="print counts and content hash")
+    p.add_argument("--reanchor", action="store_true", help="move the dates of the synthetic data forward to today (for the real clock; adds and removes nothing)")
     p.add_argument("--add-history", action="store_true", help="add the synthetic 12-month complaint history to an already seeded database (idempotent)")
     args = p.parse_args(argv)
-    if not (args.reset or args.seed or args.fingerprint or args.add_history):
+    if not (args.reset or args.seed or args.fingerprint or args.add_history or args.reanchor):
         p.print_help()
         return 2
     if args.reset:
@@ -366,6 +412,8 @@ def main(argv=None) -> int:
         print(f"Reset and seeded {db.location()}")
     elif args.seed:
         print("Seeded" if seed_if_empty() else "Database not empty; nothing seeded")
+    elif args.reanchor:
+        print(f"Moved the synthetic dates by {reanchor()} day(s) in {db.location()}")
     elif args.add_history:
         print(f"Added {add_history()} history complaints to {db.location()}")
     print(json.dumps(fingerprint(), indent=2))
