@@ -283,12 +283,25 @@ function Dashboard({ config }: { config: any }) {
       <button className="secondary" onClick={() => download("/api/export/employees.csv", "employees.csv", { mode }).catch((c) => setError(String(c.message || c)))}>{t("dash.export_employees")}</button>
     </div>
   );
+  // The Power BI feed (FR-17): the same dashboard figures as flat tables behind /api/reporting; a team lead gets their own team's tables only.
+  const feed = ["group_summary", "sessions", "suggestions", "employees", ...(team ? [] : ["baseline", "interviews", "ratings"])];
+  const powerBi = (
+    <article className="card" aria-label={t("pbi.title")}>
+      <h3>{t("pbi.title")}</h3>
+      <p>{t("pbi.intro")}</p>
+      <p className="muted"><code>{window.location.origin}/api/reporting/&lt;{t("pbi.table")}&gt;</code> · {t("pbi.header")} <code>X-Reporting-Key</code></p>
+      <div className="choices">
+        {feed.map((k) => <button key={k} className="secondary" onClick={() => download(`/api/reporting/${k}`, `${k}.csv`, { mode }).catch((c) => setError(String(c.message || c)))}>{k}.csv</button>)}
+      </div>
+      <p className="muted">{t("pbi.note")}</p>
+    </article>
+  );
   const teamBanner = team && <p className="badge prov-prefilled" role="status">{t("dash.team", { team: team.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase()) })}</p>;
 
   if (noTeam) return <section><h2>{t("dash.title")}</h2><p className="warn" role="alert">{error}</p></section>;
   if (error) return <section><h2>{t("dash.title")}</h2><p className="warn">{t("dash.forbidden")}</p><ErrorMessage error={error} /></section>;
   if (!summary) return <section><h2>{t("dash.title")}</h2><p>{t("loading")}</p></section>;
-  if (summary.empty) return <section><h2>{t("dash.title")}</h2>{teamBanner}{filters}<p className="empty">{t("dash.empty")}</p></section>;
+  if (summary.empty) return <section><h2>{t("dash.title")}</h2>{teamBanner}{filters}{powerBi}<p className="empty">{t("dash.empty")}</p></section>;
 
   const rates = [
     ["Save", summary.sessions.save_rate],
@@ -310,6 +323,7 @@ function Dashboard({ config }: { config: any }) {
       {teamBanner}
       <p className="muted">{summary.definitions.synthetic}</p>
       {filters}
+      {powerBi}
       <div className="metric-grid">
         <Metric label={t("dash.sessions")} value={summary.sessions.started} note={`${summary.sessions.saved} saved`} />
         <Metric label={t("dash.duration")} value={d.mean ?? "–"} note={t("dash.n", { n: d.n })} />

@@ -210,10 +210,10 @@ test("T22 plain form mode: no AI, manual cause, saved and tagged for timing", as
   await saved(page);
 });
 
-test("T23 dashboard (team lead) shows PRD targets, groups and the plain vs assistant split", async ({ page }) => {
+test("T23 dashboard (team lead) shows the success criteria, groups and the plain vs assistant split", async ({ page }) => {
   await openApp(page, "demo.lead");
   await page.getByRole("button", { name: "Dashboard" }).click();
-  await expect(page.getByRole("heading", { name: "PRD targets" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Success criteria" })).toBeVisible();
   await expect(page.getByText(/< 10% 'Other'/)).toBeVisible();
   await page.getByLabel("Group by").selectOption("mode");
   await expect(page.getByRole("cell", { name: "plain", exact: true })).toBeVisible();
@@ -308,7 +308,7 @@ test("T27 admin approves a new employee on the Users screen; roles land on their
   await page.getByRole("button", { name: "Approve" }).first().click();
   await expect(page.getByText("No accounts are waiting for approval.")).toBeVisible();
   await openApp(page, "demo.lead");
-  await expect(page.getByRole("heading", { name: "PRD targets" })).toBeVisible();          // team lead lands on the dashboard
+  await expect(page.getByRole("heading", { name: "Success criteria" })).toBeVisible();          // team lead lands on the dashboard
 });
 
 // ---- Find customer, in detail ----
@@ -1355,4 +1355,19 @@ test("T68 the baseline form offers the groups employees really belong to (their 
   await expect(page.getByText("Recorded").first()).toBeVisible();
   const base = await (await request.get(`${API}/api/baseline`, { headers: ADMIN })).json();
   expect(base.by_group.sales.mean_seconds).toBe(240);
+});
+
+test("T69 the dashboard shows the Power BI feed: the tables to download, the address and the header", async ({ page }) => {
+  await openApp(page, "demo.admin");
+  await page.getByRole("button", { name: "Dashboard" }).click();
+  const card = page.getByLabel("Power BI");
+  await expect(card).toContainText("/api/reporting/");
+  await expect(card).toContainText("X-Reporting-Key");
+  for (const t of ["group_summary", "sessions", "suggestions", "employees", "baseline", "interviews", "ratings"]) await expect(card.getByRole("button", { name: `${t}.csv` })).toBeVisible();
+  const [download] = await Promise.all([page.waitForEvent("download"), card.getByRole("button", { name: "group_summary.csv" }).click()]);
+  expect(download.suggestedFilename()).toBe("group_summary.csv");
+  await openApp(page, "demo.lead");                                                                 // a team lead sees their own team's tables only
+  await page.getByRole("button", { name: "Dashboard" }).click();
+  await expect(page.getByLabel("Power BI").getByRole("button", { name: "baseline.csv" })).toHaveCount(0);
+  await expect(page.getByLabel("Power BI").getByRole("button", { name: "group_summary.csv" })).toBeVisible();
 });
