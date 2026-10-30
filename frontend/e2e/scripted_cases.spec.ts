@@ -1343,3 +1343,16 @@ test("T67 a registration left over from before (its session gone from the server
   await selectFirst(page);
   await expect(clock.locator("li.now")).toContainText("Review details");                             // and the registration goes on normally
 });
+
+test("T68 the baseline form offers the groups employees really belong to (their function), so it can be compared with their registrations", async ({ page, request }) => {
+  await openApp(page, "demo.evaluator");
+  await page.getByRole("button", { name: "Evaluation" }).click();
+  const group = page.getByLabel("User group");
+  await expect(group.locator("option")).toContainText(["customer_service", "sales", "site_operations"]);
+  await group.selectOption("sales");
+  await page.getByLabel("Seconds").first().fill("240");
+  await page.getByRole("button", { name: "Submit" }).nth(1).click();
+  await expect(page.getByText("Recorded").first()).toBeVisible();
+  const base = await (await request.get(`${API}/api/baseline`, { headers: ADMIN })).json();
+  expect(base.by_group.sales.mean_seconds).toBe(240);
+});

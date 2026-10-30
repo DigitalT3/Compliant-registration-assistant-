@@ -469,7 +469,7 @@ function RootCauses({ config, canReview, onReviewed }: { config: any; canReview:
 
 function UserTestData({ config, onChanged }: { config: any; onChanged: () => void }) {
   const { t, lang } = useI18n();
-  const [base, setBase] = useState({ user_group: "group_a", scenario: "", participant_id: "", seconds: "", note: "" });
+  const [base, setBase] = useState({ user_group: "", scenario: "", participant_id: "", seconds: "", note: "" });
   const [exit, setExit] = useState({ participant_id: "", would_use_daily: true, comment: "" });
   const [sample, setSample] = useState<any[]>([]);
   const [labels, setLabels] = useState<Record<string, { cause: string; usable: boolean | null }>>({});
@@ -478,17 +478,19 @@ function UserTestData({ config, onChanged }: { config: any; onChanged: () => voi
   const fail = (c: unknown) => setErr(c instanceof ApiError ? c.message : String(c));
   const loadSample = () => get<any>("/api/evaluations/sample", { limit: 10 }).then((r) => setSample(r.items)).catch(fail);
   useEffect(() => { loadSample(); }, []);
-  const groups = Array.from(new Set((config.demo_users || []).filter((u: any) => u.role === "employee").map((u: any) => u.group))) as string[];
+  // The groups employees really belong to (their function), then the demo groups: the baseline must use the same names as the registrations it is compared with.
+  const groups = Array.from(new Set([...(config.functions || []).map((f: any) => f.id),
+    ...(config.demo_users || []).filter((u: any) => u.role === "employee").map((u: any) => u.group)])) as string[];
 
   return (
     <article className="card">
       <h3>{t("ut.title")}</h3>
       <ErrorMessage error={err} />{msg && <p className="ok">{msg}</p>}
       <form className="form-grid" onSubmit={(e) => { e.preventDefault(); setErr(null);
-        post("/api/baseline", { ...base, scenario: base.scenario || null, participant_id: base.participant_id || null, note: base.note || null, seconds: Number(base.seconds) })
+        post("/api/baseline", { ...base, user_group: base.user_group || groups[0], scenario: base.scenario || null, participant_id: base.participant_id || null, note: base.note || null, seconds: Number(base.seconds) })
           .then(() => { setMsg(t("ut.recorded")); setBase({ ...base, seconds: "", note: "" }); onChanged(); }).catch(fail); }}>
         <h4>{t("ut.baseline")}</h4>
-        <label>{t("ut.group")}<select value={base.user_group} onChange={(e) => setBase({ ...base, user_group: e.target.value })}>{groups.map((g) => <option key={g}>{g}</option>)}</select></label>
+        <label>{t("ut.group")}<select value={base.user_group || groups[0]} onChange={(e) => setBase({ ...base, user_group: e.target.value })}>{groups.map((g) => <option key={g}>{g}</option>)}</select></label>
         <label>{t("ut.scenario")}<input value={base.scenario} maxLength={20} onChange={(e) => setBase({ ...base, scenario: e.target.value })} /></label>
         <label>{t("ut.participant")}<input value={base.participant_id} maxLength={40} onChange={(e) => setBase({ ...base, participant_id: e.target.value })} /></label>
         <label>{t("ut.seconds")}<input required type="number" min="1" step="1" value={base.seconds} onChange={(e) => setBase({ ...base, seconds: e.target.value })} /></label>
