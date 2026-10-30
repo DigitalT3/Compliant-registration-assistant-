@@ -4,6 +4,68 @@ Run this in the real app: real sign-in, live Claude, real clock. It covers all 4
 
 Accounts and customers are in `docs/USER_FLOWS_TEST.md`. Flow numbers in brackets point to that file.
 
+## The 42 flows (what the item numbers mean)
+
+The "Item" column in the tables below is the number of the flow in this list. Every number from 1 to 42 appears at least once, so no flow is left out.
+
+**A. Sign-in and accounts**
+1. Sign in, sign out, and the back button after sign-out
+2. First sign-in with a temporary password forces a new password
+3. Five wrong passwords lock the account
+4. Users screen (admin): create an account, change role or function, deactivate, reset password
+5. Role visibility: each role sees only its own menu items
+
+**B. Registering a complaint (employee)**
+6. Full registration end to end
+7. Every way to find a customer: customer number, order, container, name, postcode, no match
+8. Start from a pasted email
+9. Prefill, defaults and field markers, including owner team and response target
+10. Dutch and English
+11. Summary: create, edit, billing fields
+12. Classification: suggestions, no preselection when unsure
+13. "Other" with a required reason, and the two-level cause picker
+14. Going Back and forward between steps, step times with several visits
+15. AI failure falls back to the manual form
+16. Repeat check for all scenarios T10 to T20
+17. Confirm or dispute a repeat link, with a reason
+18. Unsaved registration: leave without saving, the abandoned view, and carrying on later
+
+**C. Records and history**
+19. History screen: list and open saved complaints
+20. Audit Trail: records, search, record detail, the registration log, "Log incomplete" check
+21. Unsaved registrations view
+22. Exports: records, sessions, suggestions, disputes, employees, readout, labels sample, complaints extract
+
+**D. Dashboard and reporting**
+23. Dashboard as admin, with every panel
+24. Lead sees only their team
+25. By user group and By employee tables, minimum counts
+26. Success criteria panel
+27. Power BI panel and the reporting feed with its key
+28. `python -m scripts.dashboard_check` agrees with the raw log
+
+**E. Process owners and evaluation**
+29. Root causes screen: agree with the cause list, agreement resets when it changes
+30. Evaluation: blind labelling, usable or not usable
+31. Evaluation: baseline stopwatch times and the user-test data
+32. Exit interviews
+
+**F. Rules, configuration and decisions**
+33. Configuration: edit repeat rule values and the defaults per type
+34. Rule sign-off by Juul (rule_owner), and admin sign-off not counting
+35. Weekly review of disputed repeats
+36. Readout: evidence, and go, adjust or stop decision by Glenn
+37. Root-cause analysis on the 12-month data: themes, proposed list, three-owner agreement, re-label
+
+**G. Customer data (admin)**
+38. Customer data screens: customers, sites, contracts, orders and containers, including creating new ones
+
+**H. Safety and technical checks**
+39. Never touches the live complaint system: `scripts.readonly_check`
+40. Access refused for the wrong role
+41. Scripted checks: `scripts.repeat_check`, `requirements_check`, `classify_eval`, `summary_eval`, `email_eval`
+42. About screen content
+
 ## Part 0. Prepare (before anyone watches)
 
 1. Start: `API_PORT=8001 scripts/run_demo.sh`. Wait for "ready.", open http://127.0.0.1:5173.
