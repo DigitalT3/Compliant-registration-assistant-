@@ -318,8 +318,11 @@ def update_user(conn, actor: dict, user_id: str, role=None, user_group=None, sta
 
 # PUBLIC_INTERFACE
 def colleagues(conn) -> list:
-    """Active accounts that may register complaints, as ``{id, name}`` (the registering user can be changed to one of them)."""
+    """Active accounts that may register complaints, as ``{id, name}`` (the registering user can be changed to one of them).
+
+    Real accounts only (those with an e-mail address) unless demo mode is on."""
     roles = [r for r, perms in get_config()["roles"].items() if "register" in perms]
     marks = ",".join("?" * len(roles))
+    real = "" if demo_mode() else " AND email IS NOT NULL"      # with demo mode off the seeded demo accounts are not people
     return [dict(r) for r in conn.execute(
-        f"SELECT id,name FROM users WHERE status='active' AND role IN ({marks}) ORDER BY name", roles)]
+        f"SELECT id,name FROM users WHERE status='active' AND role IN ({marks}){real} ORDER BY name", roles)]

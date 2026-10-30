@@ -82,3 +82,13 @@ def test_only_people_who_can_register_see_the_colleague_list(client):
     assert client.get("/api/users/colleagues", headers={"X-Demo-User": "demo.viewer"}).status_code == 403
     names = client.get("/api/users/colleagues", headers=ADMIN).json()["items"]
     assert names and set(names[0]) == {"id", "name"}                                  # names only
+
+
+def test_with_demo_mode_off_only_real_accounts_can_be_the_registering_user(client, monkeypatch):
+    from tests.integration.test_team_scope import signed_in
+    eva = signed_in(client, "eva@example.nl", "customer_service")                           # a real account
+    monkeypatch.setenv("POC_DEMO_MODE", "0")
+    names = [c["name"] for c in client.get("/api/users/colleagues", headers=eva).json()["items"]]
+    assert "Test Eva" in names and not any(n.startswith("Demo ") for n in names)
+    body = {"customer_id": "C009", "site_id": "C009-S1", "channel": "phone", "complaint_type": "service", "root_cause": "missed", "description": "x"}
+    assert client.post("/api/complaints", headers=eva, json={**body, "registering_user": "demo.emp.a1"}).json()["error"]["code"] == "invalid_registering_user"
