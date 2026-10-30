@@ -23,5 +23,14 @@ fi
 API_PID=$!
 trap 'kill $API_PID 2>/dev/null' EXIT
 
+# Start the web page only once the backend answers, so a browser tab that is still open from the last run
+# never reaches a web server with no backend behind it (that shows as "ECONNREFUSED" and "Internal server error").
+printf "Waiting for the backend on :%s " "$API_PORT"
+for _ in $(seq 1 90); do
+  if curl -fs -m 2 "http://127.0.0.1:$API_PORT/health" >/dev/null 2>&1; then echo "ready."; break; fi
+  kill -0 "$API_PID" 2>/dev/null || { echo "the backend stopped; see the messages above."; exit 1; }
+  printf "."; sleep 1
+done
+
 cd frontend
 BACKEND_URL="http://127.0.0.1:$API_PORT" npx vite --host 127.0.0.1 --port "$WEB_PORT" --strictPort
