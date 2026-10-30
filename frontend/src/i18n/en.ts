@@ -120,6 +120,7 @@ export const en: Record<string, string> = {
   "lang.auto": "Auto",
   "summarise": "Create summary",
   "summary": "Summary",
+  "summary.writing": "Writing the summary…",
   "summary.what": "What",
   "summary.where": "Where",
   "summary.when": "When",

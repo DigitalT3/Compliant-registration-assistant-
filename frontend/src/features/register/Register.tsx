@@ -28,6 +28,7 @@ interface State {
   summary: any | null;
   aiSummary: any | null;   // the summary as the assistant produced it: what "edited" is measured against
   summaryFailed: string | null;
+  summaryBusy: boolean;     // the summary is still being written (the suggestion is already shown)
   analysedText: string;
   email: string;
   participant: string;
@@ -48,14 +49,14 @@ interface State {
 
 const init: State = {
   step: 0, q: "", search: null, customerId: null, ctx: null, fields: {}, text: "", textLang: "auto", summary: null, aiSummary: null,
-  summaryFailed: null, analysedText: "", email: "", participant: "", scenarioTag: "", mode: "assistant", emailNote: null, decisions: {}, cls: null, clsFailed: null, rootCause: "", causeOrigin: "manual", otherReason: "", repeat: null, sessionId: null, openedAt: null, saved: null,
+  summaryFailed: null, summaryBusy: false, analysedText: "", email: "", participant: "", scenarioTag: "", mode: "assistant", emailNote: null, decisions: {}, cls: null, clsFailed: null, rootCause: "", causeOrigin: "manual", otherReason: "", repeat: null, sessionId: null, openedAt: null, saved: null,
 };
 
 // Stepper state is kept in sessionStorage so a page reload does not lose the registration in progress.
 function load(): State {
   try {
     const saved = { ...init, ...JSON.parse(sessionStorage.getItem("cra.register") || "{}") };
-    return { ...saved, step: Math.min(saved.step, STEPS.length - 1) };   // a flow saved before repeat and save were merged
+    return { ...saved, summaryBusy: false, step: Math.min(saved.step, STEPS.length - 1) };   // a flow saved before repeat and save were merged
   } catch {
     return init;
   }
@@ -247,22 +248,31 @@ export default function Register({ onViewHistory, meName, config }: { onViewHist
 
   const emptySummary = { what: "", where: "", when: "", impact: "", extras: {} };
 
-  // One AI call when leaving Describe: structured summary + type + top-3 causes together.
+  // Leaving Describe: the type and top-3 causes come first (that is what the employee waits for, FR-09: 3 s). The summary is
+  // written alongside (at once when the type is already chosen, else as soon as the suggested type is known) and fills in
+  // behind the suggestion.
   const analyse = async () => {
-    const r = await post("/api/complaints/analyze", {
-      text: s.text, language: s.textLang === "auto" ? null : s.textLang, site_id: val("site_id") || null,
-      complaint_type: val("complaint_type") || null, container: val("container") || null, session_id: s.sessionId,
-    });
+    const language = s.textLang === "auto" ? null : s.textLang, text = s.text, chosen = val("complaint_type") || null;
+    const writeSummary = (ctype: string | null) => post("/api/complaints/summarise", {
+      text, language, site_id: val("site_id") || null, complaint_type: ctype, container: val("container") || null, session_id: s.sessionId });
+    const early = chosen ? writeSummary(chosen) : null;                                   // type known: no need to wait for the suggestion
+    const r = await post("/api/complaints/classify", { text, language, session_id: s.sessionId });
+    let ctype = chosen;
     if (r.ai_status === "ok") {
-      const { summary, classification } = r.result;
-      const shown = { ...summary, mock: r.mock, context_extras: r.context_extras || [] };
-      set({ summary: shown, aiSummary: shown, summaryFailed: null, cls: { ...r, result: classification }, clsFailed: null,
-            rootCause: r.preselect || "", causeOrigin: r.preselect ? "suggested" : "manual", analysedText: s.text });
-      if (classification.complaint_type && !val("complaint_type")) await applyType(classification.complaint_type, "suggested");
+      set({ cls: r, clsFailed: null, rootCause: r.preselect || "", causeOrigin: r.preselect ? "suggested" : "manual", analysedText: text });
+      if (r.result.complaint_type && !chosen) { ctype = r.result.complaint_type; await applyType(ctype!, "suggested"); }
     } else {
-      const cat = r.error_category || "unavailable";
-      set({ summary: s.summary || emptySummary, summaryFailed: cat, cls: null, clsFailed: cat, analysedText: s.text });
+      set({ cls: null, clsFailed: r.error_category || "unavailable", analysedText: text });
     }
+    set({ summaryBusy: true, summaryFailed: null });
+    (early || writeSummary(ctype)).then((m) => {
+      if (m.ai_status === "ok") {
+        const shown = { ...m.result, mock: m.mock, context_extras: m.context_extras || [] };
+        set({ summary: shown, aiSummary: shown, summaryFailed: null, summaryBusy: false });
+      } else {
+        set({ summary: emptySummary, summaryFailed: m.error_category || "unavailable", summaryBusy: false });
+      }
+    }).catch(() => set({ summary: emptySummary, summaryFailed: "unavailable", summaryBusy: false }));
   };
 
   // The user picked another type after the analysis: apply its defaults and refresh only the type-specific fields.
@@ -534,6 +544,7 @@ export default function Register({ onViewHistory, meName, config }: { onViewHist
       {s.step === 3 && (
         <div>
           {(s.summaryFailed || s.clsFailed) && <p className="warn">{t("ai.failed", { cat: s.summaryFailed || s.clsFailed || "" })}</p>}
+          {s.summaryBusy && !s.summary && <p className="muted" role="status">{t("summary.writing")}</p>}
           {s.summary && (
             <div className="card">
               <h3>{t("summary")} {s.summary.mock && <span className="badge mock">{t("ai.mock")}</span>}</h3>
@@ -650,7 +661,7 @@ export default function Register({ onViewHistory, meName, config }: { onViewHist
             <dt>{t("col.repeat")}</dt><dd>{s.repeat ? (s.repeat.is_repeat ? t("yes") : t("no")) : "–"}</dd>
           </dl>
           {missing.length > 0 && <p className="warn">{t("review.missing", { f: missing.map((m) => t(`f.${m}`) === `f.${m}` ? m : t(`f.${m}`)).join(", ") })}</p>}
-          <button disabled={busy || missing.length > 0} onClick={save}>{t("save")}</button>
+          <button disabled={busy || s.summaryBusy || missing.length > 0} onClick={save}>{t("save")}</button>
           <p className="muted">{t("save.note")}</p>
         </div>
       </>)}
@@ -658,7 +669,7 @@ export default function Register({ onViewHistory, meName, config }: { onViewHist
       {s.step > 0 && (
         <div className="nav">
           <button className="secondary" onClick={() => goto(s.step - 1)}>{t("back")}</button>{" "}
-          {s.step < 4 && <button onClick={next} disabled={busy || (s.step === 3 && otherNeedsReason)}>{!plain && s.step === 2 && s.text.trim() && s.analysedText !== s.text ? t("next.analyse") : t("next")}</button>}
+          {s.step < 4 && <button onClick={next} disabled={busy || (s.step === 3 && (otherNeedsReason || s.summaryBusy))}>{!plain && s.step === 2 && s.text.trim() && s.analysedText !== s.text ? t("next.analyse") : t("next")}</button>}
         </div>
       )}
     </section>

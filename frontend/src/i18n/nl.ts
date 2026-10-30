@@ -120,6 +120,7 @@ export const nl: Record<string, string> = {
   "lang.auto": "Automatisch",
   "summarise": "Samenvatting maken",
   "summary": "Samenvatting",
+  "summary.writing": "De samenvatting wordt geschreven…",
   "summary.what": "Wat",
   "summary.where": "Waar",
   "summary.when": "Wanneer",

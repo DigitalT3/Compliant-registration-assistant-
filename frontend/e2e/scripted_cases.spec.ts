@@ -1050,3 +1050,17 @@ test("T55 FR-08: the summary can be edited before saving, and a process owner ra
   await expect(cards.filter({ hasText: id })).toHaveCount(0);   // rated: gone from this rater's list
   await expect(page.getByText("Usable summaries")).toBeVisible();
 });
+
+test("T56 FR-09: the suggested type and the top causes with a one-line reason are shown on Classify, and the summary follows", async ({ page }) => {
+  await openApp(page);
+  await search(page, "100021");
+  await selectFirst(page);
+  await describe(page, "The container at our depot was not emptied on Tuesday, it was missed again.", "en");
+  await expect(page.getByText("Top suggestions")).toBeVisible();
+  const picks = page.getByRole("radio", { name: /\(\d+% – .+\)/ });                                     // each suggestion: cause, confidence, reason
+  expect(await picks.count()).toBeGreaterThanOrEqual(1);
+  expect(await picks.count()).toBeLessThanOrEqual(3);
+  await expect(page.getByLabel("Complaint type").first()).toHaveValue("service");                        // the type is suggested too
+  await expect(page.getByRole("heading", { name: /Summary/ })).toBeVisible();                           // the summary fills in behind the suggestion
+  await expect(page.getByRole("button", { name: "Next", exact: true })).toBeEnabled();
+});
