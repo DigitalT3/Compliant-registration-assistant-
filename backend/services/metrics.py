@@ -187,7 +187,8 @@ def targets(conn, out: dict) -> list:
                                          (d["faster_than_baseline"] or 0) >= t["faster_than_baseline"])
     other, top3, pre = out["classification"]["other_share"], out["classification"]["top_three_rate"], out["fields"]["prefill_rate"]
     ev = [dict(r) for r in conn.execute(
-        "SELECT e.usable, e.expert_cause, c.root_cause FROM evaluations e JOIN complaints c ON c.id=e.complaint_id")]
+        "SELECT e.usable, e.expert_cause, c.root_cause FROM evaluations e JOIN complaints c ON c.id=e.complaint_id "
+        "WHERE e.id IN (SELECT max(id) FROM evaluations GROUP BY complaint_id, actor)")]     # one rating per person per complaint: the latest
     usable = [r["usable"] for r in ev]
     labelled = [r for r in ev if r["expert_cause"]]
     daily = [r[0] for r in conn.execute("SELECT would_use_daily FROM exit_interviews")]

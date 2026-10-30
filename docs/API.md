@@ -70,3 +70,6 @@ Send `Authorization: Bearer <token>`. While a temporary password is in use, ever
 | `POST /api/customers/{id}/orders` | `{site_id, container, contract_id?, date?}`; the container and contract must belong to the site; reference `ORD-009-P1` |
 
 Added rows carry `source='poc_added'`, `created_by` and `created_at`, and an audit entry `customer_data_added`. A container added without an order can still be found by its number in the search.
+
+## Summary rating (FR-08)
+`GET /api/evaluations/sample` (evaluate permission): saved PoC complaints this rater has not rated yet, with the text, the summary (what, where, when, impact, `extras`) and no cause or suggestion. `POST /api/evaluations` `{complaint_id, usable, expert_cause?}`: `usable` is required; the cause is optional. Only the latest rating per person per complaint counts in `GET /api/evaluations` and in the dashboard target `summary_usable`. See `docs/SUMMARY_RATING.md`.

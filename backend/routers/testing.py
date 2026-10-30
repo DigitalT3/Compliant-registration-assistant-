@@ -75,16 +75,17 @@ def list_exit(user: dict = Depends(require("analytics"))):
 
 
 def _sample(conn, actor: str, limit: int) -> list:
-    """Saved PoC complaints this rater has not labelled. The AI suggestion, type and saved cause are hidden."""
+    """Saved PoC complaints this rater has not rated yet. The AI suggestion, type and saved cause are hidden."""
     rows = conn.execute(
         "SELECT c.id, c.language, c.original_text, c.summary_json FROM complaints c WHERE c.is_seed=0 AND c.id NOT IN "
-        "(SELECT complaint_id FROM evaluations WHERE actor=? AND expert_cause IS NOT NULL) ORDER BY c.id LIMIT ?",
+        "(SELECT complaint_id FROM evaluations WHERE actor=?) ORDER BY c.id LIMIT ?",
         (actor, limit)).fetchall()
     out = []
     for r in rows:
         summ = json.loads(r["summary_json"]) if r["summary_json"] else None
         out.append({"id": r["id"], "language": r["language"], "description": r["original_text"],
-                    "summary": summ and {k: summ.get(k) for k in ("what", "where", "when", "impact")}})
+                    "summary": summ and {**{k: summ.get(k) for k in ("what", "where", "when", "impact")},
+                                         "extras": {k: v for k, v in (summ.get("extras") or {}).items() if v}}})
     return out
 
 

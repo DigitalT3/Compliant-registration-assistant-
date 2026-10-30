@@ -72,7 +72,8 @@ def list_evals(user: dict = Depends(require("evaluate"))):
     """Return evaluations, usable share and expert/final-cause agreement (with n)."""
     with connection() as conn:
         rows = [dict(r) for r in conn.execute(
-            "SELECT e.*,c.root_cause final_cause FROM evaluations e JOIN complaints c ON c.id=e.complaint_id ORDER BY e.id DESC")]
+            "SELECT e.*,c.root_cause final_cause FROM evaluations e JOIN complaints c ON c.id=e.complaint_id "
+            "WHERE e.id IN (SELECT max(id) FROM evaluations GROUP BY complaint_id, actor) ORDER BY e.id DESC")]   # one rating per person per complaint: the latest
     lab = [r for r in rows if r["expert_cause"]]
     return {"items": rows, "usable": {"value": round(sum(r["usable"] for r in rows) / len(rows), 3) if rows else None, "n": len(rows)},
             "expert_agreement": {"value": round(sum(r["expert_cause"] == r["final_cause"] for r in lab) / len(lab), 3) if lab else None, "n": len(lab)}}

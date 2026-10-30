@@ -458,7 +458,7 @@ function UserTestData({ config, onChanged }: { config: any; onChanged: () => voi
   const [base, setBase] = useState({ user_group: "group_a", scenario: "", participant_id: "", seconds: "", note: "" });
   const [exit, setExit] = useState({ participant_id: "", would_use_daily: true, comment: "" });
   const [sample, setSample] = useState<any[]>([]);
-  const [labels, setLabels] = useState<Record<string, { cause: string; usable: boolean }>>({});
+  const [labels, setLabels] = useState<Record<string, { cause: string; usable: boolean | null }>>({});
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const fail = (c: unknown) => setErr(c instanceof ApiError ? c.message : String(c));
@@ -493,19 +493,30 @@ function UserTestData({ config, onChanged }: { config: any; onChanged: () => voi
       <p className="muted">{t("ut.blind_note")}</p>
       <button className="secondary" onClick={() => download("/api/export/labels-sample.csv", "labels-sample.csv").catch(fail)}>{t("ut.export_labels")}</button>
       {sample.length === 0 && <p className="empty">{t("eval.none")}</p>}
+      <p className="muted">{t("ut.usable_def")}</p>
       {sample.map((item) => {
-        const l = labels[item.id] || { cause: "", usable: true };
+        const l = labels[item.id] || { cause: "", usable: null };
+        const sm = item.summary;
         return (
           <div className="card" key={item.id}>
             <b>{item.id}</b> · {item.language}
             <p>{item.description}</p>
-            {item.summary && <p className="muted">{["what", "where", "when", "impact"].map((k) => item.summary[k]).filter(Boolean).join(" · ")}</p>}
+            {sm ? (
+              <dl className="muted">
+                {(["what", "where", "when", "impact"] as const).filter((k) => sm[k]).map((k) => <Fragment key={k}><dt>{t(`summary.${k}`)}</dt><dd>{sm[k]}</dd></Fragment>)}
+                {Object.entries(sm.extras || {}).map(([k, v]) => <Fragment key={k}><dt>{config.summary.extra_labels?.[k]?.[lang] || k}</dt><dd>{String(v)}</dd></Fragment>)}
+              </dl>
+            ) : <p className="empty">{t("ut.no_summary")}</p>}
+            <fieldset className="inline" aria-label={t("ut.rate_usable")}>
+              <legend>{t("ut.rate_usable")}</legend>
+              <label className="checkbox"><input type="radio" name={`usable-${item.id}`} checked={l.usable === true} onChange={() => setLabels({ ...labels, [item.id]: { ...l, usable: true } })} />{t("ut.usable_yes")}</label>
+              <label className="checkbox"><input type="radio" name={`usable-${item.id}`} checked={l.usable === false} onChange={() => setLabels({ ...labels, [item.id]: { ...l, usable: false } })} />{t("ut.usable_no")}</label>
+            </fieldset>
             <div className="inline">
               <select aria-label={t("eval.expert")} value={l.cause} onChange={(e) => setLabels({ ...labels, [item.id]: { ...l, cause: e.target.value } })}>
-                <option value="">{t("choose")}</option>{config.root_causes.map((c: any) => <option key={c.id} value={c.id}>{c[lang] || c.en}</option>)}
+                <option value="">{t("ut.cause_optional")}</option>{config.root_causes.map((c: any) => <option key={c.id} value={c.id}>{c[lang] || c.en}</option>)}
               </select>
-              <label className="checkbox"><input type="checkbox" checked={l.usable} onChange={(e) => setLabels({ ...labels, [item.id]: { ...l, usable: e.target.checked } })} />{t("eval.useful")}</label>
-              <button disabled={!l.cause} onClick={() => post("/api/evaluations", { complaint_id: item.id, usable: l.usable, expert_cause: l.cause })
+              <button disabled={l.usable === null} onClick={() => post("/api/evaluations", { complaint_id: item.id, usable: l.usable, expert_cause: l.cause || null })
                 .then(() => { setMsg(t("ut.recorded")); loadSample(); onChanged(); }).catch(fail)}>{t("ut.save_label")}</button>
             </div>
           </div>
@@ -519,7 +530,7 @@ function Evaluation({ config }: { config: any }) {
   const { t } = useI18n();
   const [evaluations, setEvaluations] = useState<any>(null);
   const [disputes, setDisputes] = useState<any[]>([]);
-  const [form, setForm] = useState({ complaint_id: "", usable: true, expert_cause: "" });
+  const [form, setForm] = useState({ complaint_id: "", usable: "", expert_cause: "" });
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -532,8 +543,8 @@ function Evaluation({ config }: { config: any }) {
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    post("/api/evaluations", { ...form, expert_cause: form.expert_cause || null })
-      .then(() => { setMessage("Recorded"); setForm({ complaint_id: "", usable: true, expert_cause: "" }); load(); })
+    post("/api/evaluations", { ...form, usable: form.usable === "yes", expert_cause: form.expert_cause || null })
+      .then(() => { setMessage("Recorded"); setForm({ complaint_id: "", usable: "", expert_cause: "" }); load(); })
       .catch((cause) => setError(cause instanceof ApiError ? cause.message : String(cause)));
   };
 
@@ -549,7 +560,7 @@ function Evaluation({ config }: { config: any }) {
         <h3>{t("eval.rate")}</h3>
         <label>{t("eval.id")}<input required value={form.complaint_id} onChange={(event) => setForm({ ...form, complaint_id: event.target.value })} /></label>
         <label>{t("eval.expert")}<select value={form.expert_cause} onChange={(event) => setForm({ ...form, expert_cause: event.target.value })}><option value="">{t("choose")}</option>{config.root_causes.map((cause: any) => <option key={cause.id} value={cause.id}>{cause.en}</option>)}</select></label>
-        <label className="checkbox"><input type="checkbox" checked={form.usable} onChange={(event) => setForm({ ...form, usable: event.target.checked })} />{t("eval.useful")}</label>
+        <label>{t("eval.useful")}<select required value={form.usable} onChange={(event) => setForm({ ...form, usable: event.target.value })}><option value="">{t("choose")}</option><option value="yes">{t("ut.usable_yes")}</option><option value="no">{t("ut.usable_no")}</option></select></label>
         <button>{t("eval.submit")}</button>{message && <span className="ok">{message}</span>}
       </form>
       <UserTestData config={config} onChanged={load} />

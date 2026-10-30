@@ -1,0 +1,23 @@
+{"label": "Ten typical synthetic complaints for FR-08 (summary template). 'present' = the text states it, so the summary field must be filled; 'absent' = the text does not state it, so the field must stay empty (no invented facts); 'extras' = type-specific fields that must contain the given text.",
+ "cases": [
+  {"id": "S01", "type": "service", "language": "nl", "site": "Synthetic depot 1", "present": ["what", "when", "impact"], "absent": [],
+   "text": "De container bij Synthetic depot 1 is vandaag, dinsdag, niet geleegd terwijl de ophaaldag maandag was. Dit is nu de derde keer deze maand en de container is overvol; afval waait over het terrein."},
+  {"id": "S02", "type": "service", "language": "en", "site": "Synthetic depot 2", "present": ["what", "when", "impact"], "absent": [], "container": "BOX-009-1", "extras": {"container_no": "BOX-009-1"},
+   "text": "Our bin outside the warehouse was not collected on Thursday as scheduled. Container BOX-009-1. We called on Friday and were told the truck would come, but nothing yet. Waste is piling up and attracting birds."},
+  {"id": "S03", "type": "service", "language": "nl", "present": ["what"], "absent": ["impact"],
+   "text": "De ophaling is weer gemist."},
+  {"id": "S04", "type": "service", "language": "en", "present": ["what", "impact"], "absent": [],
+   "text": "The driver left the container blocking our loading dock this morning and we could not unload any trucks for two hours."},
+  {"id": "S05", "type": "billing", "language": "en", "present": ["what"], "absent": ["when"], "extras": {"invoice_no": "2026-4471", "amount_disputed": "1,240"},
+   "text": "We were charged EUR 1,240 on invoice 2026-4471 but our contract says EUR 980 per month. Please correct this."},
+  {"id": "S06", "type": "billing", "language": "nl", "present": ["what"], "absent": ["when"], "extras": {"invoice_no": "FA-2026-0932", "amount_disputed": "210"},
+   "text": "Op factuur FA-2026-0932 staat een gewicht van 8,4 ton terwijl onze weegbon 5,1 ton aangeeft. Wij betwisten het verschil van EUR 210."},
+  {"id": "S07", "type": "billing", "language": "en", "present": ["what"], "absent": ["where", "when", "impact"],
+   "text": "Something is wrong with our latest invoice."},
+  {"id": "S08", "type": "conduct", "language": "nl", "present": ["what", "when", "impact"], "absent": [], "extras": {"who_or_vehicle_if_known": "45-BXL-7"},
+   "text": "De chauffeur van vrachtwagen 45-BXL-7 was gisteren erg onbeleefd tegen onze medewerkers en reed bijna iemand aan op het terrein."},
+  {"id": "S09", "type": "conduct", "language": "en", "present": ["what", "where", "when"], "absent": [], "extras": {"who_or_vehicle_if_known": "Jansen"},
+   "text": "Your driver Mr Jansen shouted at our receptionist this afternoon at the main gate. Very unprofessional."},
+  {"id": "S10", "type": "service", "language": "nl", "site": "Synthetic depot 2", "present": ["what", "when", "impact"], "absent": [],
+   "text": "Sinds vorige week wordt onze container op locatie 2 telkens te laat geleegd, om 18:00 in plaats van 08:00. Vandaag stond hij er om 19:30 nog. Daardoor kunnen onze klanten niet parkeren en hebben we twee klachten gekregen."}
+ ]}

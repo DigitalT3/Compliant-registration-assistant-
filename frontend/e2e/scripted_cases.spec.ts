@@ -1020,3 +1020,33 @@ test("T54 FR-06: a marker on every field shows prefilled, default, suggested, ty
   expect(line("root_cause")).toContain(",edited,changed");
   expect(rows.length).toBe(15);                                                                         // every tracked field is in the log
 });
+
+test("T55 FR-08: the summary can be edited before saving, and a process owner rates it with an explicit Usable / Not usable choice", async ({ page }) => {
+  await openApp(page);
+  await search(page, "100020");
+  await selectFirst(page);
+  await describe(page, "The container at our depot was not emptied on Tuesday, it was missed again.", "en");
+  await expect(page.getByLabel("What", { exact: true })).not.toHaveValue("");                       // the four template fields are filled
+  for (const l of ["Where", "When", "Impact"]) await expect(page.getByLabel(l, { exact: true })).toBeVisible();
+  await page.getByLabel("What", { exact: true }).fill("Missed collection on Tuesday (edited by the employee)");   // editable
+  await next(page);
+  await save(page).click();
+  await saved(page);
+
+  await openApp(page, "demo.evaluator");                                                             // a process owner (evaluator role)
+  await page.getByRole("button", { name: "Evaluation" }).click();
+  const cards = page.locator("article.card > .card").filter({ has: page.locator("fieldset") });          // one card per complaint
+  const card = cards.filter({ hasText: "What" }).first();                                            // a card with a saved summary
+  await expect(card.locator("dt", { hasText: "What" })).toBeVisible();                              // the summary is shown labelled
+  await expect(page.getByText(/Usable = you would save the summary/)).toBeVisible();                // what "usable" means
+  await expect(card.getByRole("radio", { name: "Usable", exact: true })).not.toBeChecked();          // nothing is pre-ticked
+  await expect(card.getByRole("radio", { name: "Not usable" })).not.toBeChecked();
+  await expect(card.getByRole("button", { name: "Save label" })).toBeDisabled();                     // no rating without a choice
+  const id = (await card.locator("b").first().innerText()).trim();
+  await card.getByRole("radio", { name: "Not usable" }).check();
+  await expect(card.getByRole("button", { name: "Save label" })).toBeEnabled();                      // a cause is optional
+  await card.getByRole("button", { name: "Save label" }).click();
+  await expect(page.getByText("Recorded")).toBeVisible();
+  await expect(cards.filter({ hasText: id })).toHaveCount(0);   // rated: gone from this rater's list
+  await expect(page.getByText("Usable summaries")).toBeVisible();
+});
