@@ -2,6 +2,7 @@ import { useEffect, useReducer, useState } from "react";
 import { get, post, ApiError, forgetRegistration } from "../../api/client";
 import { useI18n } from "../../i18n";
 import CustomerData from "./CustomerData";
+import { Loading } from "../../ui";
 
 /** Best guess of what the employee typed, shown as a hint under the search box (the search itself tries every kind). */
 const guessType = (q: string) => {
@@ -669,7 +670,7 @@ export default function Register({ onViewHistory, meName, config }: { onViewHist
               <p className="muted">{ruleLine()}</p>
               <p className="muted">{t("repeat.checked", { at: s.repeat.checked_at })}</p>
             </>
-          ) : t("loading")}
+          ) : <Loading label={t("loading")} lines={3} block={false} />}
           <button className="secondary" disabled={busy} onClick={checkRepeat}>{t("repeat.run")}</button>
         </div>
 

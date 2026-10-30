@@ -1,6 +1,7 @@
 import React, { FormEvent, Fragment, useEffect, useState } from "react";
 import { ApiError, download, get } from "../../api/client";
 import { useI18n } from "../../i18n";
+import { Loading } from "../../ui";
 
 /** Administrator screen: every saved record, and for the one you open, how it was made (FR-14, FR-15). */
 export default function AuditTrail({ config }: { config: any }) {
@@ -115,7 +116,7 @@ export default function AuditTrail({ config }: { config: any }) {
       {open && (
         <div className="audit-panel" aria-label={open}>
           <h3>{open} <button className="secondary" onClick={() => { setOpen(null); setDetail(null); }}>{t("audit.close")}</button></h3>
-{!detail ? <p>{t("loading")}</p> : (
+{!detail ? <Loading label={t("loading")} lines={6} /> : (
             <div className="audit-detail">
               <article className="card" aria-label={t("audit.log.title")}>
                 <h3>{t("audit.log.title")} {detail.log.applicable && (detail.log.complete

@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import { ApiError, get, post } from "../../api/client";
 import { useI18n } from "../../i18n";
+import { Loading } from "../../ui";
 
 export type Section = "sites" | "contracts" | "orders" | "containers";
 const PAGE = 25;
@@ -150,7 +151,7 @@ export default function CustomerDataPage({ section, onBack }: { section: Section
         </form>
       )}
 
-      {!data ? <p className="muted" role="status">{t("loading")}</p> : total === 0 ? <p className="muted">{t("cd.none")}</p> : (
+      {!data ? <Loading label={t("loading")} lines={5} block={false} /> : total === 0 ? <p className="muted">{t("cd.none")}</p> : (
         <>
           <table className="data-table">
             {section === "sites" && (<>

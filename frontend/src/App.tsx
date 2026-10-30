@@ -8,6 +8,7 @@ import CustomerDataPage, { Section } from "./features/customerdata/CustomerDataP
 import CustomersPage from "./features/customerdata/CustomersPage";
 import AuditTrail from "./features/audit/AuditTrail";
 import RootCauseAnalysis from "./features/rca/RootCauseAnalysis";
+import { Icon, Loading, initials } from "./ui";
 
 type Page = "register" | "history" | "audit" | "customers" | Section | "dashboard" | "readout" | "rootcauses" | "rca" | "evaluation" | "config" | "users" | "about";
 
@@ -39,6 +40,8 @@ function AppShell() {
   const [fnLabels, setFnLabels] = useState<any[]>([]);
   const [changingPw, setChangingPw] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [collapsed, setCollapsed] = useState(() => { try { return localStorage.getItem("cra.menu") === "collapsed"; } catch { return false; } });
+  const toggleMenu = () => setCollapsed((c) => { try { localStorage.setItem("cra.menu", c ? "open" : "collapsed"); } catch { /* not saved */ } return !c; });
 
   const enter = (user: Me) => {
     setNotice(undefined);
@@ -72,11 +75,11 @@ function AppShell() {
     enter(await get("/api/auth/me"));
   };
 
-  if (!booted) return <main className="loading-page"><p>{t("loading")}</p></main>;
+  if (!booted) return <main className="loading-page"><Loading label={t("loading")} /></main>;
   if (!me) return <AuthScreen notice={notice} onSignedIn={enter} />;
   if (me.must_change_password) return <ChangePassword forced onDone={enter} />;   // temporary password: nothing else until it is replaced
   if (!config) {
-    return <main className="loading-page"><ErrorMessage error={error} /><p>{t("loading")}</p></main>;
+    return <main className="loading-page"><ErrorMessage error={error} /><Loading label={t("loading")} /></main>;
   }
 
   const demoSession = !hasToken();
@@ -85,62 +88,78 @@ function AppShell() {
   const fnName = fnLabels.find((x) => x.id === me.function)?.[lang];
 
   return (
-    <div className="app">
-      <header className="app-header">
-        <div>
-          <h1>{t("app.title")}</h1>
-          <p className="poc-banner">
-            {t("banner", { ai: config.ai?.mock ? t("banner.mock") : t("banner.live") })}
-          </p>
+    <div className={`app${collapsed ? " collapsed" : ""}`}>
+      <aside className="sidebar-shell">
+        <div className="brand">
+          <span className="brand-mark" aria-hidden="true">R</span>
+          <span className="brand-text"><strong>Renewi</strong><small>{t("app.title")}</small></span>
         </div>
-        <div className="header-controls">
-          {demoSession ? (
-            <label>
-              {t("user")}
-              <select value={me.id} onChange={(event) => changeDemoUser(event.target.value)}>
-                {config.demo_users.map((demo: any) => (
-                  <option key={demo.id} value={demo.id}>{demo.name} ({demo.role})</option>
-                ))}
-              </select>
-            </label>
-          ) : (
-            <div className="user-chip" aria-label={t("auth.signed_in_as")}>
-              <div><strong>{me.name}</strong><small>{[fnName, me.role].filter(Boolean).join(" · ")}</small></div>
-            </div>
-          )}
-          <label>
-            {t("language")}
-            <select value={lang} onChange={(event) => setLang(event.target.value as "nl" | "en")}>
-              <option value="nl">Nederlands</option>
-              <option value="en">English</option>
-            </select>
-          </label>
-          {!demoSession && <button className="secondary" onClick={() => setChangingPw(true)}>{t("pw.change")}</button>}
-          <button className="secondary" onClick={signOut}>{demoSession ? t("auth.demo.exit") : t("auth.signout")}</button>
-        </div>
-      </header>
-      <div className="app-body">
         <nav className="sidebar" aria-label="Main navigation">
           {visible.map((item) => (
             <Fragment key={item}>
-              {item === "customers" && <div className="nav-group" role="presentation">{t("nav.group.customerdata")}</div>}
+              {item === "customers" && <div className="nav-group" role="presentation"><span>{t("nav.group.customerdata")}</span></div>}
               <button
                 className={`${current === item ? "active" : ""}${(DATA_PAGES.includes(item) || item === "customers") ? " nav-sub" : ""}`}
                 onClick={() => setPage(item)}
                 aria-current={current === item ? "page" : undefined}
+                title={collapsed ? t(`nav.${item}`) : undefined}
               >
-                {t(`nav.${item}`)}
+                <Icon name={item} />
+                <span className="nav-label">{t(`nav.${item}`)}</span>
               </button>
             </Fragment>
           ))}
         </nav>
-        <main className="content">
+        <button className="collapse-btn" onClick={toggleMenu} aria-expanded={!collapsed}
+          aria-label={collapsed ? "Expand menu" : "Collapse menu"} title={collapsed ? "Expand menu" : "Collapse menu"}>
+          <Icon name="chevron" />
+          <span className="nav-label">Collapse</span>
+        </button>
+      </aside>
+      <div className="main-col">
+        <header className="app-header">
+          <div className="page-heading">
+            <h1 className="sr-only">{t("app.title")}</h1>
+            <p className="poc-banner">
+              <span className="poc-pill">PoC</span>
+              {t("banner", { ai: config.ai?.mock ? t("banner.mock") : t("banner.live") })}
+            </p>
+          </div>
+          <div className="header-controls">
+            {demoSession ? (
+              <label>
+                {t("user")}
+                <select value={me.id} onChange={(event) => changeDemoUser(event.target.value)}>
+                  {config.demo_users.map((demo: any) => (
+                    <option key={demo.id} value={demo.id}>{demo.name} ({demo.role})</option>
+                  ))}
+                </select>
+              </label>
+            ) : (
+              <div className="user-chip" aria-label={t("auth.signed_in_as")}>
+                <span className="avatar" aria-hidden="true">{initials(me.name)}</span>
+                <div><strong>{me.name}</strong><small>{[fnName, me.role].filter(Boolean).join(" · ")}</small></div>
+              </div>
+            )}
+            <label>
+              {t("language")}
+              <select value={lang} onChange={(event) => setLang(event.target.value as "nl" | "en")}>
+                <option value="nl">Nederlands</option>
+                <option value="en">English</option>
+              </select>
+            </label>
+            {!demoSession && <button className="secondary" onClick={() => setChangingPw(true)}>{t("pw.change")}</button>}
+            <button className="secondary" onClick={signOut}>{demoSession ? t("auth.demo.exit") : t("auth.signout")}</button>
+          </div>
+        </header>
+        <main className="content" key={current}>
           {changingPw && (
             <div className="card">
               <ChangePassword forced={false} onCancel={() => setChangingPw(false)}
                 onDone={(u) => { setMe(u); setChangingPw(false); setNotice(undefined); }} />
             </div>
           )}
+          {current === "register" && <h2 className="page-title">{t("nav.register")}</h2>}
           {current === "register" && <Register config={config} meName={me.name} onViewHistory={() => setPage("history")} />}
           {current === "customers" && <CustomersPage onOpen={() => setPage("sites")} />}
           {DATA_PAGES.includes(current as Section) && <CustomerDataPage section={current as Section} onBack={() => setPage("register")} />}
@@ -291,7 +310,7 @@ function Dashboard({ config }: { config: any }) {
 
   if (noTeam) return <section><h2>{t("dash.title")}</h2><p className="warn" role="alert">{error}</p></section>;
   if (error) return <section><h2>{t("dash.title")}</h2><p className="warn">{t("dash.forbidden")}</p><ErrorMessage error={error} /></section>;
-  if (!summary) return <section><h2>{t("dash.title")}</h2><p>{t("loading")}</p></section>;
+  if (!summary) return <section><h2>{t("dash.title")}</h2><Loading label={t("loading")} lines={5} /></section>;
   if (summary.empty) return <section><h2>{t("dash.title")}</h2>{teamBanner}{filters}{powerBi}<p className="empty">{t("dash.empty")}</p></section>;
 
   const rates = [
@@ -741,7 +760,7 @@ function Readout({ canDecide }: { canDecide: boolean }) {
     try { setEv(await post<any>("/api/readout/decision", { decision, comment })); setComment(""); setError(null); }
     catch (cause) { setError(cause instanceof ApiError ? cause.message : String(cause)); }
   };
-  if (!ev) return <section><h2>{t("ro.title")}</h2><ErrorMessage error={error} />{!error && <p>{t("loading")}</p>}</section>;
+  if (!ev) return <section><h2>{t("ro.title")}</h2><ErrorMessage error={error} />{!error && <Loading label={t("loading")} lines={5} />}</section>;
   const fmt = (id: string, v: number | null) => v === null ? "–" : ["time", "daily_use"].includes(id) ? String(Math.round(v * 10) / 10) : `${Math.round(v * 100)}%`;
   const b = ev.baseline;
   return (

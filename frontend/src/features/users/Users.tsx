@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { ApiError, get } from "../../api/client";
 import { api } from "../../api/client";
 import { useI18n } from "../../i18n";
+import { Loading } from "../../ui";
 
 /** Administrator screen: approve new employees, change role/group, disable or re-enable accounts. */
 export default function Users({ config, meId }: { config: any; meId: string }) {
@@ -87,7 +88,7 @@ export default function Users({ config, meId }: { config: any; meId: string }) {
           <button disabled={!form.name || !form.email || (form.role === "lead" && !form.function) || !!busy}>{busy === "new:add" ? t("saving") : t("users.add.btn")}</button>
         </div>
       </form>
-      {!loaded && !error && <p className="muted" role="status">{t("loading")}</p>}
+      {!loaded && !error && <Loading label={t("loading")} lines={5} block={false} />}
       <div className="card">
         <h3>{t("users.pending")} ({pending.length})</h3>
         {pending.length === 0 ? <p className="muted">{t("users.none_pending")}</p> : (
