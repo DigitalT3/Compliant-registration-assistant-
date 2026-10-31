@@ -6,7 +6,7 @@ import { Loading } from "../../ui";
 const STEPS = ["find_customer", "review_details", "describe_complaint", "classify", "repeat_save"];
 const OUTCOMES = ["accepted", "changed", "typed"];
 const PAGE = 20;
-const RECENT = 15;                                                    // registrations drawn in the time-per-step list (the average uses all of them)
+const WINDOWS = ["1", "5", "10", "15", "all"];                        // how many of the latest registrations the step list and its average cover
 
 type Table = { columns: string[]; rows: any[][] };
 const asObjects = (t: Table) => t.rows.map((r) => Object.fromEntries(t.columns.map((c, i) => [c, r[i]])) as Record<string, any>);
@@ -23,6 +23,7 @@ export default function TeamReport({ targets = {} }: { targets?: Record<string, 
   const [field, setField] = useState("");
   const [outcome, setOutcome] = useState("");
   const [page, setPage] = useState(1);
+  const [window, setWindow] = useState("15");
 
   useEffect(() => {
     Promise.all([get<Table>("/api/reporting/sessions", { format: "json" }), get<Table>("/api/reporting/suggestions", { format: "json" })])
@@ -40,20 +41,18 @@ export default function TeamReport({ targets = {} }: { targets?: Record<string, 
     for (const s of suggestions || []) if (s.outcome in n) n[s.outcome] += 1;
     return n;
   }, [suggestions]);
-  const avg = useMemo(() => Object.fromEntries(STEPS.map((k) => {
-    const v = (sessions || []).map((s) => s[`${k}_s`]).filter((x) => typeof x === "number");
-    return [k, v.length ? v.reduce((a: number, b: number) => a + b, 0) / v.length : null];
-  })), [sessions]);
 
   if (error) return <article className="card"><h3>{t("tr.title")}</h3><p className="warn" role="alert">{error}</p></article>;
   if (!sessions || !suggestions) return <article className="card"><h3>{t("tr.title")}</h3><Loading label={t("loading")} lines={4} /></article>;
   if (!sessions.length) return <article className="card"><h3>{t("tr.title")}</h3><p className="empty">{t("tr.empty")}</p></article>;
 
   const timed = sessions.filter((s) => STEPS.some((k) => typeof s[`${k}_s`] === "number"));
-  const longest = Math.max(1, ...timed.map((s) => STEPS.reduce((a, k) => a + (s[`${k}_s`] || 0), 0)));
+  const latest = window === "all" ? timed : timed.slice(0, Number(window));              // the feed lists the newest registration first
+  const mean = (v: any[]) => { const n = v.filter((x) => typeof x === "number"); return n.length ? n.reduce((a: number, b: number) => a + b, 0) / n.length : null; };
+  const avg = Object.fromEntries(STEPS.map((k) => [k, mean(latest.map((s) => s[`${k}_s`]))]));
+  const longest = Math.max(1, ...latest.map((s) => STEPS.reduce((a, k) => a + (s[`${k}_s`] || 0), 0)));
   const totalTarget = STEPS.reduce((a, k) => a + (targets[k] || 0), 0);
-  const whole = timed.map((s) => s.duration_s).filter((x) => typeof x === "number");
-  const avgTotal = whole.length ? whole.reduce((a: number, b: number) => a + b, 0) / whole.length : null;
+  const avgTotal = mean(latest.map((s) => s.duration_s));
   const decided = totals.accepted + totals.changed + totals.typed;
   const share = (n: number) => (decided ? `${Math.round((n / decided) * 100)}%` : "–");
   const fields = [...new Set(suggestions.map((s) => s.field))].sort();
@@ -76,13 +75,18 @@ export default function TeamReport({ targets = {} }: { targets?: Record<string, 
 
       <h4>{t("tr.steps")}</h4>
       <p className="muted">{t("tr.steps_note")}</p>
-      {timed.length > RECENT && <p className="muted">{t("tr.recent", { n: RECENT, total: timed.length })}</p>}
+      <div className="inline">
+        <label>{t("tr.window")} <select value={window} onChange={(e) => setWindow(e.target.value)}>
+          {WINDOWS.map((w) => <option key={w} value={w}>{w === "all" ? t("tr.all_regs", { n: timed.length }) : w === "1" ? t("tr.latest_one") : t("tr.latest_n", { n: w })}</option>)}
+        </select></label>
+        <span className="muted">{t("tr.window_note", { n: latest.length })}</span>
+      </div>
       <ul className="legend" aria-hidden="true">{STEPS.map((k, i) => <li key={k}><i className={`swatch step-${i}`} />{t(`tr.step.${k}`)}</li>)}</ul>
       <div className="table-scroll">
         <table>
           <thead><tr><th>{t("tr.user")}</th><th>{t("tr.registration")}</th><th>{t("tr.chart")}</th>{STEPS.map((k) => <th key={k}>{t(`tr.step.${k}`)}</th>)}<th>{t("tr.total")}</th></tr></thead>
           <tbody>
-            {timed.slice(-RECENT).reverse().map((s) => (
+            {latest.map((s) => (
               <tr key={s.session_id}>
                 <td>{s.user}</td><td><code>{String(s.session_id).slice(0, 8)}</code></td>
                 <td className="stack-cell">
@@ -94,7 +98,7 @@ export default function TeamReport({ targets = {} }: { targets?: Record<string, 
                 <td><b>{seconds(s.duration_s)}</b></td>
               </tr>
             ))}
-            <tr className="sum-row"><td colSpan={3}>{t("tr.average")}</td>
+            <tr className="sum-row"><td colSpan={3}>{latest.length === 1 ? t("tr.this_one") : t("tr.average")}</td>
               {STEPS.map((k) => <td key={k} className={targets[k] && avg[k] !== null && avg[k] > targets[k] ? "over-target" : undefined}>{seconds(avg[k])}</td>)}
               <td className={totalTarget && avgTotal !== null && avgTotal > totalTarget ? "over-target" : undefined}>{seconds(avgTotal)}</td></tr>
             {totalTarget > 0 && <tr className="target-row"><td colSpan={3}>{t("tr.target")}</td>{STEPS.map((k) => <td key={k}>{targets[k] ?? "–"}</td>)}<td>{totalTarget}</td></tr>}

@@ -1329,6 +1329,11 @@ test("T70 the dashboard has a team report: time per step and every suggestion ac
   await expect(report.locator("th", { hasText: "Find customer" })).toBeVisible();
   await expect(report.getByRole("cell", { name: "Average per step" })).toBeVisible();
   await expect(report.locator("th", { hasText: /^Team$/ })).toHaveCount(0);                  // one team only: no team column
+  await expect(report.locator("tbody tr").filter({ has: page.locator("code") })).toHaveCount(15);       // the latest 15 by default
+  await report.getByLabel("Show").selectOption("1");                                                      // the average for the latest registration alone
+  await expect(report.locator("tbody tr").filter({ has: page.locator("code") })).toHaveCount(1);
+  await expect(report.getByRole("cell", { name: "This registration" })).toBeVisible();
+  await expect(report.getByRole("cell", { name: "Target" })).toBeVisible();
   await report.getByLabel("Outcome").selectOption("accepted");
   await expect(report.locator("tbody tr .out-badge").first()).toHaveText("Accepted");
 });
