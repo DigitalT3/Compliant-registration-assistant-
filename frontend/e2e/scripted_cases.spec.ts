@@ -1337,3 +1337,19 @@ test("T70 the dashboard has a team report: time per step and every suggestion ac
   await report.getByLabel("Outcome").selectOption("accepted");
   await expect(report.locator("tbody tr .out-badge").first()).toHaveText("Accepted");
 });
+
+test("T71 the dashboard can be limited to registrations since a time, and refreshed", async ({ page }) => {
+  await openApp(page, "demo.lead");
+  await page.getByRole("button", { name: "Dashboard" }).click();
+  const bar = page.getByRole("group", { name: "Which registrations and how fresh" });
+  await expect(bar.getByRole("status")).toContainText(/Updated /);                                    // shows how fresh the figures are
+  await expect(page.getByRole("heading", { name: "Success criteria" })).toBeVisible();
+  await bar.getByLabel("Since").selectOption("custom");                                              // a time in the future: nothing started since
+  await bar.locator(`input[type="datetime-local"]`).fill("2099-01-01T00:00");
+  await expect(page.getByText("No recorded sessions yet. Complete a registration to see metrics.")).toBeVisible();
+  await expect(page.getByLabel("Team report").getByText("No registrations to report on yet.")).toBeVisible();
+  await bar.getByLabel("Since").selectOption("all");
+  await expect(page.getByRole("heading", { name: "Success criteria" })).toBeVisible();
+  await bar.getByRole("button", { name: "Refresh" }).click();
+  await expect(page.getByLabel("Team report").getByRole("heading", { name: "Time per step (seconds)" })).toBeVisible();
+});

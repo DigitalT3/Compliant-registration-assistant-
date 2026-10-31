@@ -15,7 +15,7 @@ const seconds = (v: number | null | undefined) => (v === null || v === undefined
 
 /** The team report (step 6 of the user flow): time per step and every suggestion accepted or changed, drawn from the same read-only
  * tables as the Power BI feed. A team lead gets their own team's rows only (the server scopes them); an administrator gets everyone's. */
-export default function TeamReport({ targets = {} }: { targets?: Record<string, number> }) {
+export default function TeamReport({ targets = {}, since, tick = 0 }: { targets?: Record<string, number>; since?: string; tick?: number }) {
   const { t } = useI18n();
   const [sessions, setSessions] = useState<Record<string, any>[] | null>(null);
   const [suggestions, setSuggestions] = useState<Record<string, any>[] | null>(null);
@@ -25,11 +25,12 @@ export default function TeamReport({ targets = {} }: { targets?: Record<string, 
   const [page, setPage] = useState(1);
   const [window, setWindow] = useState("15");
 
-  useEffect(() => {
-    Promise.all([get<Table>("/api/reporting/sessions", { format: "json" }), get<Table>("/api/reporting/suggestions", { format: "json" })])
-      .then(([s, g]) => { setSessions(asObjects(s)); setSuggestions(asObjects(g)); setError(null); })
+  useEffect(() => {                                                       // again when the window changes or the Dashboard refreshes
+    const q = { format: "json", date_from: since };
+    Promise.all([get<Table>("/api/reporting/sessions", q), get<Table>("/api/reporting/suggestions", q)])
+      .then(([s, g]) => { setSessions(asObjects(s)); setSuggestions(asObjects(g)); setError(null); setPage(1); })
       .catch((e) => setError(e instanceof ApiError ? e.message : String(e)));
-  }, []);
+  }, [since, tick]);
 
   const byField = useMemo(() => {
     const out: Record<string, Record<string, number>> = {};
@@ -42,9 +43,9 @@ export default function TeamReport({ targets = {} }: { targets?: Record<string, 
     return n;
   }, [suggestions]);
 
-  if (error) return <article className="card"><h3>{t("tr.title")}</h3><p className="warn" role="alert">{error}</p></article>;
-  if (!sessions || !suggestions) return <article className="card"><h3>{t("tr.title")}</h3><Loading label={t("loading")} lines={4} /></article>;
-  if (!sessions.length) return <article className="card"><h3>{t("tr.title")}</h3><p className="empty">{t("tr.empty")}</p></article>;
+  if (error && !sessions) return <article className="card" aria-label={t("tr.title")}><h3>{t("tr.title")}</h3><p className="warn" role="alert">{error}</p></article>;
+  if (!sessions || !suggestions) return <article className="card" aria-label={t("tr.title")}><h3>{t("tr.title")}</h3><Loading label={t("loading")} lines={4} /></article>;
+  if (!sessions.length) return <article className="card" aria-label={t("tr.title")}><h3>{t("tr.title")}</h3><p className="empty">{t("tr.empty")}</p></article>;
 
   const timed = sessions.filter((s) => STEPS.some((k) => typeof s[`${k}_s`] === "number"));
   const latest = window === "all" ? timed : timed.slice(0, Number(window));              // the feed lists the newest registration first
@@ -65,6 +66,7 @@ export default function TeamReport({ targets = {} }: { targets?: Record<string, 
     <article className="card team-report" aria-label={t("tr.title")}>
       <h3>{t("tr.title")}</h3>
       <p className="muted">{t("tr.intro")}</p>
+      {error && <p className="warn" role="alert">{error}</p>}
 
       <div className="metric-grid">
         <article className="metric card"><span>{t("tr.registrations")}</span><strong>{sessions.length}</strong><small>{t("tr.timed", { n: timed.length })}</small></article>

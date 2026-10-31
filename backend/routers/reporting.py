@@ -52,8 +52,8 @@ def _summary_row(name: str, mean, n, other, repeat, acc, sessions=None, saved=No
     return row
 
 
-def _group_summary(conn, user: dict) -> list:
-    out = metrics.summary(conn, scope.scoped(user, {"group_by": "group"}))
+def _group_summary(conn, user: dict, since: dict | None = None) -> list:
+    out = metrics.summary(conn, scope.scoped(user, {"group_by": "group", **(since or {})}))
     if out.get("empty"):
         return []
     rows = []
@@ -75,18 +75,19 @@ def _people(conn, actors) -> dict:
     return {a: names.get(a) or a for a in actors}
 
 
-def _dataset(conn, name: str, user: dict, mode: str | None, group: str | None) -> tuple:
-    f = scope.scoped(user, {"mode": mode, "group": group})
+def _dataset(conn, name: str, user: dict, mode: str | None, group: str | None, date_from: str | None = None, date_to: str | None = None) -> tuple:
+    since = {"date_from": date_from, "date_to": date_to}               # only registrations started in this window (the user-test tables are not windowed)
+    f = scope.scoped(user, {"mode": mode, "group": group, **since})
     steps = sessions_svc.STEPS
     if name == "group_summary":
-        rows = _group_summary(conn, user)
+        rows = _group_summary(conn, user, since)
         return (list(rows[0]) if rows else ["group"]), [list(r.values()) for r in rows]
     if name == "sessions":
         items = metrics.session_list(conn, f, 1, 100000)["items"]
         who = _people(conn, [i["actor"] for i in items])
-        return (["session_id", "user", "group", "mode", "participant", "scenario", "status", "duration_s", "root_cause", "repeat", "failure",
+        return (["session_id", "started", "user", "group", "mode", "participant", "scenario", "status", "duration_s", "root_cause", "repeat", "failure",
                  "first_field_s", "first_entry_s"] + [f"{s}_s" for s in steps],
-                [[i["id"], who.get(i["actor"], i["actor"]), i["user_group"], i["mode"], i["participant_id"], i["scenario"], i["status"], i["duration_seconds"],
+                [[i["id"], i["started"], who.get(i["actor"], i["actor"]), i["user_group"], i["mode"], i["participant_id"], i["scenario"], i["status"], i["duration_seconds"],
                   i["root_cause"], i["repeat_detected"], i["failure_status"], i["first_field_seconds"], i["first_entry_seconds"]]
                  + [i["step_seconds"].get(s) for s in steps] for i in items])
     if name == "suggestions":
@@ -133,7 +134,7 @@ def workbook(mode: str | None = Query(None, pattern="^(assistant|plain)$"), grou
 
 @router.get("/api/reporting/{dataset}", summary="Read-only dashboard tables for Power BI")
 def reporting(dataset: str, format: str = Query("csv", pattern="^(csv|json)$"), mode: str | None = Query(None, pattern="^(assistant|plain)$"),
-              group: str | None = None, user: dict = Depends(reporting_user)):
+              group: str | None = None, date_from: str | None = None, date_to: str | None = None, user: dict = Depends(reporting_user)):
     """``group_summary`` (the FR-17 measures by user group), ``sessions``, ``suggestions``, ``employees``, ``baseline``, ``interviews`` or ``ratings``.
 
     CSV by default (the Power BI Web connector reads it directly); ``format=json`` returns ``{"columns": [...], "rows": [...]}``.
@@ -141,7 +142,7 @@ def reporting(dataset: str, format: str = Query("csv", pattern="^(csv|json)$"), 
     if not re.fullmatch(r"[a-z_]+", dataset) or dataset not in DATASETS:
         raise ApiError(404, "unknown_dataset", "Choose one of: " + ", ".join(DATASETS) + ".")
     with connection() as conn:
-        columns, rows = _dataset(conn, dataset, user, mode, group)
+        columns, rows = _dataset(conn, dataset, user, mode, group, date_from, date_to)
         audit(conn, user["id"], "reporting_read", {"dataset": dataset, "rows": len(rows)})
         conn.commit()
     if format == "json":

@@ -82,13 +82,13 @@ def summary(date_from: str | None = None, date_to: str | None = None, complaint_
 
 @router.get("/api/analytics/employees", summary="How each employee registers (team leads see their own team)")
 def employees(group: str | None = None, mode: str | None = Query(None, pattern="^(assistant|plain)$"),
-              user: dict = Depends(require("analytics"))):
+              date_from: str | None = None, date_to: str | None = None, user: dict = Depends(require("analytics"))):
     """Per-employee volume, time and its spread, and how much of the assistant's text and cause is kept.
 
     A team lead only gets the people of the team they lead. Shares based on fewer than ``report.per_employee_min_n``
     registrations are hidden (``value`` is null).
     """
-    f = scope.scoped(user, _filters(None, None, None, None, None, None, group, mode=mode))
+    f = scope.scoped(user, _filters(date_from, date_to, None, None, None, None, group, mode=mode))
     def compute():
         with connection() as conn:
             return metrics.employee_breakdown(conn, f)

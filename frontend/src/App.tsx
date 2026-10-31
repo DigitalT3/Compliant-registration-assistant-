@@ -1,4 +1,4 @@
-import { Fragment, FormEvent, useEffect, useMemo, useState } from "react";
+import { Fragment, FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { ApiError, clearSession, download, get, getDemoUser, hasToken, post, put, setDemoUser } from "./api/client";
 import { I18nProvider, useI18n } from "./i18n";
 import Register from "./features/register/Register";
@@ -9,6 +9,7 @@ import CustomersPage from "./features/customerdata/CustomersPage";
 import AuditTrail from "./features/audit/AuditTrail";
 import RootCauseAnalysis from "./features/rca/RootCauseAnalysis";
 import TeamReport from "./features/teamreport/TeamReport";
+import DataWindow, { loadSince, saveSince, sinceIso, useAutoRefresh, type Since } from "./features/teamreport/DataWindow";
 import { Icon, Loading, initials } from "./ui";
 
 type Page = "register" | "history" | "audit" | "customers" | Section | "dashboard" | "readout" | "rootcauses" | "rca" | "evaluation" | "config" | "users" | "about";
@@ -281,16 +282,29 @@ function Dashboard({ config }: { config: any }) {
   const groupBy = "group";                                       // the FR-17 view: by user group (a team lead has no split: their own team only)
   const team: string | undefined = summary?.scope?.team;   // set for a team lead: the dashboard shows that team only
   const [people, setPeople] = useState<any>(null);
+  const [since, setSince] = useState<Since>(loadSince);              // which registrations the figures cover; kept per viewer
+  const [tick, setTick] = useState(0);                                // bumped by Refresh and by the 30 s timer
+  const [auto, setAuto] = useState(true);
+  const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
+  const [busy, setBusy] = useState(false);
+  const dateFrom = useMemo(() => sinceIso(since), [since, tick]);     // "last hour" is worked out again on every refresh
+  const refresh = useCallback(() => setTick((n) => n + 1), []);
+  useAutoRefresh(auto, refresh);
 
   useEffect(() => {
-    get("/api/analytics/summary", { group_by: groupBy })
-      .then((r) => { setSummary(r); setError(null); setNoTeam(false); })
-      .catch((cause) => { setNoTeam(cause instanceof ApiError && cause.code === "team_required"); setError(cause instanceof ApiError ? cause.message : String(cause)); });
-  }, []);
+    setBusy(true);
+    get("/api/analytics/summary", { group_by: groupBy, date_from: dateFrom })
+      .then((r) => { setSummary(r); setError(null); setNoTeam(false); setUpdatedAt(new Date()); })
+      .catch((cause) => { setNoTeam(cause instanceof ApiError && cause.code === "team_required"); setError(cause instanceof ApiError ? cause.message : String(cause)); })
+      .finally(() => setBusy(false));
+  }, [dateFrom, tick]);                                               // tick: a refresh with "All" selected has the same date, so it must trigger on its own
 
   useEffect(() => {
-    get("/api/analytics/employees").then(setPeople).catch(() => setPeople(null));
-  }, []);
+    get("/api/analytics/employees", { date_from: dateFrom }).then(setPeople).catch(() => setPeople(null));
+  }, [dateFrom, tick]);
+
+  const changeSince = (s: Since) => { setSince(s); saveSince(s); };
+  const windowBar = <DataWindow since={since} onSince={changeSince} onRefresh={refresh} auto={auto} onAuto={setAuto} updatedAt={updatedAt} busy={busy} />;
 
   const filters = (
     <div className="inline">
@@ -324,7 +338,7 @@ function Dashboard({ config }: { config: any }) {
   if (noTeam) return <section><h2>{t("dash.title")}</h2><p className="warn" role="alert">{error}</p></section>;
   if (error) return <section><h2>{t("dash.title")}</h2><p className="warn">{t("dash.forbidden")}</p><ErrorMessage error={error} /></section>;
   if (!summary) return <section><h2>{t("dash.title")}</h2><Loading label={t("loading")} lines={5} /></section>;
-  if (summary.empty) return <section><h2>{t("dash.title")}</h2>{teamBanner}{filters}{powerBi}<p className="empty">{t("dash.empty")}</p></section>;
+  if (summary.empty) return <section><h2>{t("dash.title")}</h2>{teamBanner}{windowBar}{filters}{powerBi}<TeamReport targets={config?.step_targets_seconds} since={dateFrom} tick={tick} /><p className="empty">{t("dash.empty")}</p></section>;
 
   const rates = [
     ["Save", summary.sessions.save_rate],
@@ -345,9 +359,10 @@ function Dashboard({ config }: { config: any }) {
       <h2>{t("dash.title")}</h2>
       {teamBanner}
       <p className="muted">{summary.definitions.synthetic}</p>
+      {windowBar}
       {filters}
       {powerBi}
-      <TeamReport targets={config?.step_targets_seconds} />
+      <TeamReport targets={config?.step_targets_seconds} since={dateFrom} tick={tick} />
       <div className="metric-grid">
         <Metric label={t("dash.sessions")} value={summary.sessions.started} note={`${summary.sessions.saved} saved`} />
         <Metric label={t("dash.duration")} value={d.mean ?? "–"} note={t("dash.n", { n: d.n })} />

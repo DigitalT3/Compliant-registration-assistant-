@@ -129,3 +129,24 @@ def test_the_feed_shows_the_person_s_name_not_their_id(client, monkeypatch):
         assert users == {"Test Sanne.Sales"}, (name, users)
     wb = client.get("/api/reporting/workbook.xlsx", headers=KEY)
     assert wb.status_code == 200 and b"Test Sanne.Sales" in __import__("zipfile").ZipFile(io.BytesIO(wb.content)).read("xl/worksheets/sheet2.xml")
+
+
+def test_the_feed_has_a_start_time_and_can_be_limited_to_registrations_since_a_time(client, monkeypatch):
+    monkeypatch.setenv("REPORTING_TOKEN", "test-reporting-key")
+    sales = signed_in(client, "sanne.sales@example.nl", "sales")
+    register(client, headers=sales, participant="S1", field_provenance=PROV)
+    table = rows(client.get("/api/reporting/sessions", headers=KEY))
+    assert "started" in table[0] and table[1][table[0].index("started")].startswith("20")             # a time, so a report can filter by it
+    for name in ("sessions", "suggestions", "group_summary", "employees"):
+        everything = rows(client.get(f"/api/reporting/{name}", headers=KEY))
+        later = rows(client.get(f"/api/reporting/{name}", headers=KEY, params={"date_from": "2999-01-01T00:00:00+00:00"}))
+        assert len(everything) > 1 and len(later) <= 1, name                                          # nothing started that late: only a header, or nothing
+    assert len(rows(client.get("/api/reporting/sessions", headers=KEY, params={"date_from": "2000-01-01T00:00:00+00:00"}))) == len(table)
+    assert client.get("/api/analytics/summary", headers=ADMIN, params={"date_from": "2999-01-01T00:00:00+00:00"}).json()["empty"] is True
+
+
+def test_a_workbook_session_start_is_a_real_date_time():
+    import zipfile
+    from backend.services.xlsx import workbook_bytes
+    z = zipfile.ZipFile(io.BytesIO(workbook_bytes({"t": (["session_id", "started"], [["a", "2026-10-30T16:27:40.123456+00:00"]])})))
+    assert b's="1"' in z.read("xl/worksheets/sheet1.xml")                                              # the time column gets the date-time style

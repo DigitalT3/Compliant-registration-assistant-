@@ -362,3 +362,4 @@ button.link:hover:not(:disabled) { background: none; }
 @media (max-width: 640px) { .field-row { grid-template-columns: 7rem 1fr 1.5rem; } }
 .over-target { color: #b45309; font-weight: 700; }
 .target-row td { color: var(--muted); font-style: italic; }
+.data-window { margin: .5rem 0; gap: .5rem 1rem; } .data-window .check { display: inline-flex; align-items: center; gap: .35rem; }
