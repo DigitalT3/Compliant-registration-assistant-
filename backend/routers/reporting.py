@@ -10,13 +10,13 @@ import os
 import re
 
 from fastapi import APIRouter, Depends, Header, Query, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 
 from .. import db
 from ..auth import current_user
 from ..dbutil import audit, connection
 from ..errors import ApiError
-from ..services import metrics, scope, sessions as sessions_svc
+from ..services import metrics, scope, sessions as sessions_svc, xlsx
 from ..settings import get_config
 from . import testing
 
@@ -102,6 +102,21 @@ def _dataset(conn, name: str, user: dict, mode: str | None, group: str | None) -
                      "JOIN complaints c ON c.id=e.complaint_id LEFT JOIN users u ON u.id=e.actor "
                      "WHERE e.id IN (SELECT max(id) FROM evaluations GROUP BY complaint_id, actor) ORDER BY e.id").fetchall()
     return ["complaint_id", "usable", "expert_cause", "saved_cause", "rater", "rated_at"], [list(x) for x in r]
+
+
+@router.get("/api/reporting/workbook.xlsx", summary="The reporting tables in one Excel workbook (for the Power BI service in the browser)")
+def workbook(mode: str | None = Query(None, pattern="^(assistant|plain)$"), group: str | None = None, user: dict = Depends(reporting_user)):
+    """One sheet and one Excel table per reporting table, which Power BI imports as a dataset. A team lead gets their own team's tables only."""
+    tables = {}
+    with connection() as conn:
+        for name in DATASETS:
+            if name in ("baseline", "interviews", "ratings") and scope.lead_team(user):
+                continue                                                 # the user-test tables are not split by team
+            tables[name] = _dataset(conn, name, user, mode, group)
+        audit(conn, user["id"], "reporting_read", {"dataset": "workbook", "rows": sum(len(r) for _, r in tables.values())})
+        conn.commit()
+    return Response(xlsx.workbook_bytes(tables), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    headers={"Content-Disposition": 'attachment; filename="renewi_complaints_feed.xlsx"'})
 
 
 @router.get("/api/reporting/{dataset}", summary="Read-only dashboard tables for Power BI")

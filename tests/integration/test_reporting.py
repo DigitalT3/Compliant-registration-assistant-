@@ -68,3 +68,43 @@ def test_a_read_is_audited(client, monkeypatch):
         assert conn.execute("SELECT count(*) FROM audit WHERE action='reporting_read' AND actor='reporting-key'").fetchone()[0] == 1
     finally:
         conn.close()
+
+
+def test_the_workbook_has_one_excel_table_per_reporting_table(client, monkeypatch):
+    import xml.etree.ElementTree as ET
+    import zipfile
+    monkeypatch.setenv("REPORTING_TOKEN", "test-reporting-key")
+    sales = signed_in(client, "sanne.sales@example.nl", "sales")
+    register(client, headers=sales, participant="S1", field_provenance=PROV)
+    assert client.get("/api/reporting/workbook.xlsx").status_code == 401
+    assert client.get("/api/reporting/workbook.xlsx", headers=EMP).status_code == 403
+    r = client.get("/api/reporting/workbook.xlsx", headers=KEY)
+    assert r.status_code == 200 and r.headers["content-type"].startswith("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    z = zipfile.ZipFile(io.BytesIO(r.content))
+    ns = {"m": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
+    sheets = [s.get("name") for s in ET.fromstring(z.read("xl/workbook.xml")).findall("m:sheets/m:sheet", ns)]
+    assert sheets == ["group_summary", "sessions", "suggestions", "employees", "baseline", "interviews", "ratings"]
+    tables = {ET.fromstring(z.read(n)).get("name"): ET.fromstring(z.read(n)) for n in z.namelist() if n.startswith("xl/tables/")}
+    assert set(tables) == set(sheets)
+    sess = ET.fromstring(z.read("xl/worksheets/sheet2.xml"))
+    head = [c.find("m:is/m:t", ns).text for c in sess.find("m:sheetData", ns)[0]]
+    assert "duration_s" in head and "group" in head
+    assert [c.get("name") for c in tables["sessions"].findall("m:tableColumns/m:tableColumn", ns)] == head       # the table's columns are the header row
+    assert len(list(sess.find("m:sheetData", ns))) >= 2                                                          # header and the registration
+    lead = signed_in(client, "lena.lead@example.nl", "sales", role="lead")
+    z2 = zipfile.ZipFile(io.BytesIO(client.get("/api/reporting/workbook.xlsx", headers=lead).content))
+    assert [s.get("name") for s in ET.fromstring(z2.read("xl/workbook.xml")).findall("m:sheets/m:sheet", ns)] == ["group_summary", "sessions", "suggestions", "employees"]
+
+
+def test_the_workbook_writer_types_numbers_and_times():
+    import xml.etree.ElementTree as ET
+    import zipfile
+    from backend.services.xlsx import workbook_bytes
+    z = zipfile.ZipFile(io.BytesIO(workbook_bytes({"t": (["name", "seconds", "recorded_at"], [["a & <b>", 85.5, "2026-10-30T16:27:40+00:00"], [None, 3, None]])})))
+    ns = {"m": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
+    rows_ = ET.fromstring(z.read("xl/worksheets/sheet1.xml")).find("m:sheetData", ns)
+    first = {c.get("r"): c for c in rows_[1]}
+    assert first["A2"].find("m:is/m:t", ns).text == "a & <b>"                                                     # text is escaped and kept as text
+    assert first["B2"].get("t") is None and first["B2"].find("m:v", ns).text == "85.5"                            # a number stays a number
+    assert first["C2"].get("s") == "1" and float(first["C2"].find("m:v", ns).text) > 46000                        # a time is a real date-time
+    assert {c.get("r") for c in rows_[2]} == {"B3"}                                                              # empty cells are left out

@@ -308,7 +308,11 @@ function Dashboard({ config }: { config: any }) {
       <div className="choices">
         {feed.map((k) => <button key={k} className="secondary" onClick={() => download(`/api/reporting/${k}`, `${k}.csv`).catch((c) => setError(String(c.message || c)))}>{k}.csv</button>)}
       </div>
-      <p className="muted">{t("pbi.note")}</p>
+      <p>{t("pbi.browser")}</p>
+      <div className="choices">
+        <button onClick={() => download("/api/reporting/workbook.xlsx", "renewi_complaints_feed.xlsx").catch((c) => setError(String(c.message || c)))}>{t("pbi.workbook")}</button>
+      </div>
+      <p className="muted">{t("pbi.note")} {t("pbi.note.browser")}</p>
     </article>
   );
   const teamBanner = team && <p className="badge prov-prefilled" role="status">{t("dash.team", { team: team.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase()) })}</p>;

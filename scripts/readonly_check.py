@@ -29,7 +29,8 @@ NETWORK_MODULES = {"backend/db.py", "backend/services/ai.py"}
 NETWORK_IMPORT = re.compile(r"^\s*(?:import|from)\s+(requests|httpx|urllib\.request|aiohttp|http\.client|smtplib|ftplib|socket|boto3|botocore|psycopg|paramiko|pymysql|pyodbc|cx_Oracle|simple_salesforce|zeep)\b", re.M)
 FORBIDDEN_TERMS = re.compile(r"salesforce|force\.com|soql|servicenow|service-now|dynamics\s?365|sap\.com|renewi\.(?:com|nl)|\bcrm\b|\berp\b", re.I)
 SCANNED = ["backend/*.py", "backend/**/*.py", "scripts/*.py", "frontend/src/**/*.ts", "frontend/src/**/*.tsx", "config.json", ".env.example", "Dockerfile", "fly.toml"]
-ALLOWED_URL_HOSTS = {"localhost", "127.0.0.1", "0.0.0.0"}
+ALLOWED_URL_HOSTS = {"localhost", "127.0.0.1", "0.0.0.0",
+                     "schemas.openxmlformats.org"}     # the Excel file format's name for its XML parts: an identifier that is written into the file, never contacted
 ENV_STORE = {"POC_DB", "POC_DB_PATH", "POC_PG_SCHEMA", "POC_ALLOW_LIVE_RESET", "DATABASE_URL"}                                   # the PoC's own store
 ENV_AI = {"AI_PROVIDER", "LLM_PROVIDER", "AI_MODEL", "AI_BASE_URL", "AI_API_KEY", "AI_TIMEOUT_S", "AI_MAX_RETRIES", "AI_MAX_INPUT_CHARS", "AI_MOCK_FAIL",
           "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN", "AWS_REGION", "AWS_DEFAULT_REGION", "BEDROCK_MODEL_ID"}                # the language model

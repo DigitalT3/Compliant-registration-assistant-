@@ -3,6 +3,7 @@
 The app has its own dashboard (Dashboard in the menu). This is the same data for Power BI, through a read-only feed. Nothing in it writes to the PoC.
 
 ## What is built
+- `GET /api/reporting/workbook.xlsx`: all the tables in one Excel workbook (the dashboard button "Download Excel workbook for Power BI"; see `docs/POWER_BI_BROWSER.md` for the browser route, no Windows needed).
 - `GET /api/reporting/<table>`: `group_summary`, `sessions`, `suggestions`, `employees`, `baseline`, `interviews`, `ratings`. CSV by default, `?format=json` for JSON. `?group=` and `?mode=` filter.
 - `group_summary` carries the four FR-17 measures by user group, each with its sample size (n): mean time per registration, "Other" share, suggestion acceptance (first cause kept, cause within the top 3, summary kept, type kept) and repeat rate, plus an "All groups" row. It comes from the same code as the dashboard, so the figures match.
 - Access: the header `X-Reporting-Key` (the value of `REPORTING_TOKEN` in `.env`; it can only read these tables, all teams), or a signed-in person with the analytics permission (a team lead sees their own team only, and not the baseline, interviews and ratings tables). Every read is written to the audit log (`reporting_read`).
