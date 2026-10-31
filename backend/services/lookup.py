@@ -1,6 +1,7 @@
 """Customer lookup by customer number, order reference, container id, name or postcode (FR-01, FR-03)."""
 import re
 
+from .. import db
 from ..errors import ApiError
 
 _POSTCODE = re.compile(r"^\d{4}[A-Z]{0,2}$")  # NL "3133KJ" / BE "2030"; spaces and case are ignored
@@ -144,18 +145,24 @@ def find_in_text(conn, text: str) -> tuple[str | None, str | None]:
 # PUBLIC_INTERFACE
 def context(conn, customer_id: str, site_id: str | None = None, everything: bool = False) -> dict:
     """Return customer, sites, contracts and the last 10 orders (optionally per site)."""
-    cust = conn.execute("SELECT * FROM customers WHERE id=?", (customer_id,)).fetchone()
-    if not cust:
-        raise ApiError(404, "customer_not_found", "Customer not found.")
-    sites = [dict(r) for r in conn.execute("SELECT * FROM sites WHERE customer_id=? ORDER BY id", (customer_id,))]
-    contracts = []
-    for r in conn.execute("SELECT * FROM contracts WHERE customer_id=? ORDER BY id", (customer_id,)):
-        d = dict(r)
-        d["active"] = d["status"] == "active"
-        contracts.append(d)
     sql, args = "SELECT * FROM orders WHERE customer_id=?", [customer_id]
     if site_id:
         sql, args = sql + " AND site_id=?", args + [site_id]
-    orders = [dict(r) for r in conn.execute(sql + f" ORDER BY date DESC, id DESC LIMIT {200 if everything else 10}", args)]
-    containers = [dict(r) for r in conn.execute("SELECT * FROM containers WHERE customer_id=? ORDER BY number", (customer_id,))]
+    found, site_rows, contract_rows, order_rows, container_rows = db.fetch_many(conn, [      # five independent reads, one round trip
+        ("SELECT * FROM customers WHERE id=?", (customer_id,)),
+        ("SELECT * FROM sites WHERE customer_id=? ORDER BY id", (customer_id,)),
+        ("SELECT * FROM contracts WHERE customer_id=? ORDER BY id", (customer_id,)),
+        (sql + f" ORDER BY date DESC, id DESC LIMIT {200 if everything else 10}", args),
+        ("SELECT * FROM containers WHERE customer_id=? ORDER BY number", (customer_id,))])
+    if not found:
+        raise ApiError(404, "customer_not_found", "Customer not found.")
+    cust = found[0]
+    sites = [dict(r) for r in site_rows]
+    contracts = []
+    for r in contract_rows:
+        d = dict(r)
+        d["active"] = d["status"] == "active"
+        contracts.append(d)
+    orders = [dict(r) for r in order_rows]
+    containers = [dict(r) for r in container_rows]
     return {"customer": dict(cust), "sites": sites, "contracts": contracts, "orders": orders, "containers": containers}

@@ -52,6 +52,7 @@ export const nl: Record<string, string> = {
   "tr.step.classify": "Indelen",
   "tr.step.repeat_save": "Herhaling en opslaan",
   "tr.recent": "De laatste {n} van {total} registraties; het gemiddelde gebruikt alle {total}.",
+  "tr.target": "Doel",
   "tr.user": "Gebruiker",
   "tr.registration": "Registratie",
   "tr.chart": "Stappen",

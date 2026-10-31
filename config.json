@@ -169,6 +169,7 @@
       "prefilled",
       "default"
     ],
+    "step_targets_seconds": {"find_customer": 10, "review_details": 10, "describe_complaint": 30, "classify": 15, "repeat_save": 10},
     "step_idle_cap_seconds": 600
   },
   "types": [

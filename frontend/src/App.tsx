@@ -347,7 +347,7 @@ function Dashboard({ config }: { config: any }) {
       <p className="muted">{summary.definitions.synthetic}</p>
       {filters}
       {powerBi}
-      <TeamReport />
+      <TeamReport targets={config?.step_targets_seconds} />
       <div className="metric-grid">
         <Metric label={t("dash.sessions")} value={summary.sessions.started} note={`${summary.sessions.saved} saved`} />
         <Metric label={t("dash.duration")} value={d.mean ?? "–"} note={t("dash.n", { n: d.n })} />

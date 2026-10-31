@@ -52,6 +52,7 @@ export const en: Record<string, string> = {
   "tr.step.classify": "Classify",
   "tr.step.repeat_save": "Repeat and save",
   "tr.recent": "Showing the latest {n} of {total} registrations; the average uses all {total}.",
+  "tr.target": "Target",
   "tr.user": "User",
   "tr.registration": "Registration",
   "tr.chart": "Steps",

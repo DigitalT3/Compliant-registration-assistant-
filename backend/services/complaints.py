@@ -183,21 +183,22 @@ def create(conn, p: dict, user: dict) -> dict:
         absent = field_mapping_svc.missing_required(field_mapping_svc.to_target(row))     # FR-14: the record must fill every required target field
         if absent:
             raise RuntimeError(f"record would miss required target fields: {absent}")
-        conn.execute(f"INSERT INTO complaints({','.join(row)}) VALUES({','.join('?' * len(row))})", list(row.values()))
-        _record_final_provenance(conn, session, p, cfg)
-        _insert_repeat_check(conn, p.get("session_id"), cid, result)
-        for prior, decision, reason in decisions:                   # stored in the same transaction as the complaint
-            disputes_svc.insert(conn, user["id"], cid, prior, decision, reason)
-        if session:
-            _record_outcome(conn, session["id"], p)
-            conn.execute("INSERT INTO step_events(session_id,step,event_type,at) VALUES(?,?,?,?)",
-                         (session["id"], "repeat_save", "step_completed", db.now()))
-            conn.execute("UPDATE sessions SET status='saved',ended=? WHERE id=?", (db.now(), session["id"]))
-            audit(conn, user["id"], "session_completed", {"session_id": session["id"], "outcome": "saved"})
-        audit(conn, user["id"], "repeat_rule_evaluated", {"complaint_id": cid, "is_repeat": result["is_repeat"],
-                                                          "rule_version": result["rule_version"]})
-        audit(conn, user["id"], "complaint_saved", {"complaint_id": cid, "root_cause": p["root_cause"],
-                                                           **({"registered_for": who} if who != user["id"] else {})})
+        with db.pipeline(conn):                                     # the writes travel together: one round trip, not one per row
+            conn.execute(f"INSERT INTO complaints({','.join(row)}) VALUES({','.join('?' * len(row))})", list(row.values()))
+            _record_final_provenance(conn, session, p, cfg)
+            _insert_repeat_check(conn, p.get("session_id"), cid, result)
+            for prior, decision, reason in decisions:                   # stored in the same transaction as the complaint
+                disputes_svc.insert(conn, user["id"], cid, prior, decision, reason)
+            if session:
+                _record_outcome(conn, session["id"], p)
+                conn.execute("INSERT INTO step_events(session_id,step,event_type,at) VALUES(?,?,?,?)",
+                             (session["id"], "repeat_save", "step_completed", db.now()))
+                conn.execute("UPDATE sessions SET status='saved',ended=? WHERE id=?", (db.now(), session["id"]))
+                audit(conn, user["id"], "session_completed", {"session_id": session["id"], "outcome": "saved"})
+            audit(conn, user["id"], "repeat_rule_evaluated", {"complaint_id": cid, "is_repeat": result["is_repeat"],
+                                                              "rule_version": result["rule_version"]})
+            audit(conn, user["id"], "complaint_saved", {"complaint_id": cid, "root_cause": p["root_cause"],
+                                                               **({"registered_for": who} if who != user["id"] else {})})
         conn.commit()
     except Exception:
         log.exception("complaint save failed")   # the API response stays generic; the cause goes to the server log

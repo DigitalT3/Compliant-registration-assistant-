@@ -55,9 +55,10 @@ def do_prefill(body: PrefillIn, user: dict = Depends(require("register"))):
         fields = prefill.apply_defaults(body.complaint_type, fields, body.origin)
         if body.session_id:
             sessions.get_open(conn, body.session_id, user)
-            for name, f in fields.items():
-                conn.execute("INSERT INTO field_events(session_id,field,origin,event_type,changed,at) VALUES(?,?,?,?,0,?)",
-                             (body.session_id, name, f["provenance"], "field", db.now()))
+            with db.pipeline(conn):                                          # one round trip for all the field rows
+                for name, f in fields.items():
+                    conn.execute("INSERT INTO field_events(session_id,field,origin,event_type,changed,at) VALUES(?,?,?,?,0,?)",
+                                 (body.session_id, name, f["provenance"], "field", db.now()))
             conn.commit()
         return {"fields": fields}
 

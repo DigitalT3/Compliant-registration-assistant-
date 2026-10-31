@@ -15,7 +15,7 @@ const seconds = (v: number | null | undefined) => (v === null || v === undefined
 
 /** The team report (step 6 of the user flow): time per step and every suggestion accepted or changed, drawn from the same read-only
  * tables as the Power BI feed. A team lead gets their own team's rows only (the server scopes them); an administrator gets everyone's. */
-export default function TeamReport() {
+export default function TeamReport({ targets = {} }: { targets?: Record<string, number> }) {
   const { t } = useI18n();
   const [sessions, setSessions] = useState<Record<string, any>[] | null>(null);
   const [suggestions, setSuggestions] = useState<Record<string, any>[] | null>(null);
@@ -51,6 +51,9 @@ export default function TeamReport() {
 
   const timed = sessions.filter((s) => STEPS.some((k) => typeof s[`${k}_s`] === "number"));
   const longest = Math.max(1, ...timed.map((s) => STEPS.reduce((a, k) => a + (s[`${k}_s`] || 0), 0)));
+  const totalTarget = STEPS.reduce((a, k) => a + (targets[k] || 0), 0);
+  const whole = timed.map((s) => s.duration_s).filter((x) => typeof x === "number");
+  const avgTotal = whole.length ? whole.reduce((a: number, b: number) => a + b, 0) / whole.length : null;
   const decided = totals.accepted + totals.changed + totals.typed;
   const share = (n: number) => (decided ? `${Math.round((n / decided) * 100)}%` : "–");
   const fields = [...new Set(suggestions.map((s) => s.field))].sort();
@@ -91,7 +94,10 @@ export default function TeamReport() {
                 <td><b>{seconds(s.duration_s)}</b></td>
               </tr>
             ))}
-            <tr className="sum-row"><td colSpan={3}>{t("tr.average")}</td>{STEPS.map((k) => <td key={k}>{seconds(avg[k])}</td>)}<td /></tr>
+            <tr className="sum-row"><td colSpan={3}>{t("tr.average")}</td>
+              {STEPS.map((k) => <td key={k} className={targets[k] && avg[k] !== null && avg[k] > targets[k] ? "over-target" : undefined}>{seconds(avg[k])}</td>)}
+              <td className={totalTarget && avgTotal !== null && avgTotal > totalTarget ? "over-target" : undefined}>{seconds(avgTotal)}</td></tr>
+            {totalTarget > 0 && <tr className="target-row"><td colSpan={3}>{t("tr.target")}</td>{STEPS.map((k) => <td key={k}>{targets[k] ?? "–"}</td>)}<td>{totalTarget}</td></tr>}
           </tbody>
         </table>
       </div>

@@ -269,6 +269,14 @@ def pipeline(conn):
 
 
 # PUBLIC_INTERFACE
+def fetch_many(conn, queries: list) -> list:
+    """Run independent reads ``[(sql, params), ...]`` and return each one's rows. On Postgres they travel in one round trip."""
+    with pipeline(conn):
+        cursors = [conn.execute(sql, params) for sql, params in queries]
+        return [c.fetchall() for c in cursors]
+
+
+# PUBLIC_INTERFACE
 def table_names(conn) -> list:
     """Names of the PoC tables in the active database (bookkeeping tables excluded)."""
     if is_pg():

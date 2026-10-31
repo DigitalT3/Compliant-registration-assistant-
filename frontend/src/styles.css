@@ -360,3 +360,5 @@ button.link:hover:not(:disabled) { background: none; }
 .out-accepted { background: #0f7a5f; } .out-changed { background: #b7791f; } .out-typed { background: #5b6b8c; }
 .out-badge { color: #fff; }
 @media (max-width: 640px) { .field-row { grid-template-columns: 7rem 1fr 1.5rem; } }
+.over-target { color: #b45309; font-weight: 700; }
+.target-row td { color: var(--muted); font-style: italic; }

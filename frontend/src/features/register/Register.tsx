@@ -213,13 +213,15 @@ export default function Register({ onViewHistory, meName, config }: { onViewHist
   });
 
   const selectCandidate = (c: any) => run(async () => {
-    const sid = s.sessionId || (await post("/api/sessions", { mode: "assistant",
-      opened_seconds_ago: s.openedAt ? Math.max(0, (Date.now() - s.openedAt) / 1000) : 0 })).session_id;
-    const ctx = await get(`/api/customers/${c.customer_id}/context`);
-    const pf = await post("/api/prefill", { origin,
+    const ctxCall = get(`/api/customers/${c.customer_id}/context`);                       // asked at the same time as the session, not after it
+    const sidCall = s.sessionId ? Promise.resolve(s.sessionId) : post("/api/sessions", { mode: "assistant",
+      opened_seconds_ago: s.openedAt ? Math.max(0, (Date.now() - s.openedAt) / 1000) : 0 }).then((r) => r.session_id);
+    const sid = await sidCall;
+    const pfCall = post("/api/prefill", { origin,
       customer_id: c.customer_id, site_id: c.matched_site_id, order_id: c.matched_order_id,
       complaint_type: s.fields.complaint_type?.value, session_id: sid, guess_site: true,
     });
+    const [ctx, pf] = await Promise.all([ctxCall, pfCall]);
     sessionStorage.setItem("cra.currentCustomer", c.customer_id);
     // The type sent above (chosen earlier, or guessed from the email) produced those defaults, so it has to stay with them.
     const kept = s.fields.complaint_type?.value ? { complaint_type: s.fields.complaint_type } : {};
