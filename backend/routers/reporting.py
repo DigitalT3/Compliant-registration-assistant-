@@ -65,6 +65,16 @@ def _group_summary(conn, user: dict) -> list:
     return rows
 
 
+def _people(conn, actors) -> dict:
+    """What to show for each user id: the real name (the id when there is no account), or "Employee 1, 2, ..." when
+    ``report.show_employee_names`` is off, the same rule as the per-employee table."""
+    actors = sorted({a for a in actors if a})
+    if not get_config()["report"]["show_employee_names"]:
+        return {a: f"Employee {i}" for i, a in enumerate(actors, 1)}
+    names = {r["id"]: r["name"] for r in conn.execute(f"SELECT id,name FROM users WHERE id IN ({','.join('?' * len(actors))})", actors)} if actors else {}
+    return {a: names.get(a) or a for a in actors}
+
+
 def _dataset(conn, name: str, user: dict, mode: str | None, group: str | None) -> tuple:
     f = scope.scoped(user, {"mode": mode, "group": group})
     steps = sessions_svc.STEPS
@@ -73,15 +83,17 @@ def _dataset(conn, name: str, user: dict, mode: str | None, group: str | None) -
         return (list(rows[0]) if rows else ["group"]), [list(r.values()) for r in rows]
     if name == "sessions":
         items = metrics.session_list(conn, f, 1, 100000)["items"]
+        who = _people(conn, [i["actor"] for i in items])
         return (["session_id", "user", "group", "mode", "participant", "scenario", "status", "duration_s", "root_cause", "repeat", "failure",
                  "first_field_s", "first_entry_s"] + [f"{s}_s" for s in steps],
-                [[i["id"], i["actor"], i["user_group"], i["mode"], i["participant_id"], i["scenario"], i["status"], i["duration_seconds"],
+                [[i["id"], who.get(i["actor"], i["actor"]), i["user_group"], i["mode"], i["participant_id"], i["scenario"], i["status"], i["duration_seconds"],
                   i["root_cause"], i["repeat_detected"], i["failure_status"], i["first_field_seconds"], i["first_entry_seconds"]]
                  + [i["step_seconds"].get(s) for s in steps] for i in items])
     if name == "suggestions":
         items = metrics.suggestion_rows(conn, f)
+        who = _people(conn, [i["actor"] for i in items])
         return (["complaint_id", "session_id", "team", "user", "mode", "saved_at", "field", "origin", "outcome"],
-                [[i["complaint_id"], i["session_id"], i["team"], i["actor"], i["mode"], i["saved_at"], i["field"], i["origin"], i["outcome"]] for i in items])
+                [[i["complaint_id"], i["session_id"], i["team"], who.get(i["actor"], i["actor"]), i["mode"], i["saved_at"], i["field"], i["origin"], i["outcome"]] for i in items])
     if name == "employees":
         data = metrics.employee_breakdown(conn, f)
         cols = ["employee", "team", "started", "saved", "abandoned", "median_s", "min_s", "max_s", "summary_accepted", "cause_accepted", "top3",

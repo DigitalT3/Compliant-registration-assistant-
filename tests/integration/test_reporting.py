@@ -117,3 +117,15 @@ def test_the_dashboard_gets_the_report_link_only_when_it_is_an_https_link(client
     assert client.get("/api/config").json()["powerbi_report_url"] == ""                                          # nothing but https is passed on
     monkeypatch.setenv("POWERBI_REPORT_URL", "https://app.powerbi.com/groups/me/reports/abc")
     assert client.get("/api/config").json()["powerbi_report_url"] == "https://app.powerbi.com/groups/me/reports/abc"
+
+
+def test_the_feed_shows_the_person_s_name_not_their_id(client, monkeypatch):
+    monkeypatch.setenv("REPORTING_TOKEN", "test-reporting-key")
+    sales = signed_in(client, "sanne.sales@example.nl", "sales")
+    register(client, headers=sales, participant="S1", field_provenance=PROV)
+    for name in ("sessions", "suggestions"):
+        table = rows(client.get(f"/api/reporting/{name}", headers=KEY))
+        users = {r[table[0].index("user")] for r in table[1:]}
+        assert users == {"Test Sanne.Sales"}, (name, users)
+    wb = client.get("/api/reporting/workbook.xlsx", headers=KEY)
+    assert wb.status_code == 200 and b"Test Sanne.Sales" in __import__("zipfile").ZipFile(io.BytesIO(wb.content)).read("xl/worksheets/sheet2.xml")
