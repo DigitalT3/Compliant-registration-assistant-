@@ -1317,3 +1317,18 @@ test("T69 the dashboard shows the Power BI feed: the tables to download, the add
   await expect(page.getByLabel("Power BI").getByRole("button", { name: "baseline.csv" })).toHaveCount(0);
   await expect(page.getByLabel("Power BI").getByRole("button", { name: "group_summary.csv" })).toBeVisible();
 });
+
+test("T70 the dashboard has a team report: time per step and every suggestion accepted or changed, for the lead's own team", async ({ page }) => {
+  await openApp(page, "demo.lead");
+  await page.getByRole("button", { name: "Dashboard" }).click();
+  const report = page.getByLabel("Team report");
+  await expect(report.getByRole("heading", { name: "Team report" })).toBeVisible();
+  await expect(report.getByRole("heading", { name: "Time per step (seconds)" })).toBeVisible();
+  await expect(report.getByRole("heading", { name: "Suggestions by field" })).toBeVisible();
+  await expect(report.getByRole("heading", { name: "Every suggestion" })).toBeVisible();
+  await expect(report.locator("th", { hasText: "Find customer" })).toBeVisible();
+  await expect(report.getByRole("cell", { name: "Average per step" })).toBeVisible();
+  await expect(report.locator("th", { hasText: /^Team$/ })).toHaveCount(0);                  // one team only: no team column
+  await report.getByLabel("Outcome").selectOption("accepted");
+  await expect(report.locator("tbody tr .out-badge").first()).toHaveText("Accepted");
+});

@@ -108,3 +108,12 @@ def test_the_workbook_writer_types_numbers_and_times():
     assert first["B2"].get("t") is None and first["B2"].find("m:v", ns).text == "85.5"                            # a number stays a number
     assert first["C2"].get("s") == "1" and float(first["C2"].find("m:v", ns).text) > 46000                        # a time is a real date-time
     assert {c.get("r") for c in rows_[2]} == {"B3"}                                                              # empty cells are left out
+
+
+def test_the_dashboard_gets_the_report_link_only_when_it_is_an_https_link(client, monkeypatch):
+    monkeypatch.delenv("POWERBI_REPORT_URL", raising=False)
+    assert client.get("/api/config").json()["powerbi_report_url"] == ""
+    monkeypatch.setenv("POWERBI_REPORT_URL", "javascript:alert(1)")
+    assert client.get("/api/config").json()["powerbi_report_url"] == ""                                          # nothing but https is passed on
+    monkeypatch.setenv("POWERBI_REPORT_URL", "https://app.powerbi.com/groups/me/reports/abc")
+    assert client.get("/api/config").json()["powerbi_report_url"] == "https://app.powerbi.com/groups/me/reports/abc"

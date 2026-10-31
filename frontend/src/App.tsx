@@ -8,6 +8,7 @@ import CustomerDataPage, { Section } from "./features/customerdata/CustomerDataP
 import CustomersPage from "./features/customerdata/CustomersPage";
 import AuditTrail from "./features/audit/AuditTrail";
 import RootCauseAnalysis from "./features/rca/RootCauseAnalysis";
+import TeamReport from "./features/teamreport/TeamReport";
 import { Icon, Loading, initials } from "./ui";
 
 type Page = "register" | "history" | "audit" | "customers" | Section | "dashboard" | "readout" | "rootcauses" | "rca" | "evaluation" | "config" | "users" | "about";
@@ -309,8 +310,11 @@ function Dashboard({ config }: { config: any }) {
         {feed.map((k) => <button key={k} className="secondary" onClick={() => download(`/api/reporting/${k}`, `${k}.csv`).catch((c) => setError(String(c.message || c)))}>{k}.csv</button>)}
       </div>
       <p>{t("pbi.browser")}</p>
+      {config?.powerbi_report_url && <div className="choices">
+        <a className="button" href={config.powerbi_report_url} target="_blank" rel="noopener noreferrer">{t("pbi.open")}</a>
+      </div>}
       <div className="choices">
-        <button onClick={() => download("/api/reporting/workbook.xlsx", "renewi_complaints_feed.xlsx").catch((c) => setError(String(c.message || c)))}>{t("pbi.workbook")}</button>
+        <button className={config?.powerbi_report_url ? "secondary" : undefined} onClick={() => download("/api/reporting/workbook.xlsx", "renewi_complaints_feed.xlsx").catch((c) => setError(String(c.message || c)))}>{t("pbi.workbook")}</button>
       </div>
       <p className="muted">{t("pbi.note")} {t("pbi.note.browser")}</p>
     </article>
@@ -343,6 +347,7 @@ function Dashboard({ config }: { config: any }) {
       <p className="muted">{summary.definitions.synthetic}</p>
       {filters}
       {powerBi}
+      <TeamReport />
       <div className="metric-grid">
         <Metric label={t("dash.sessions")} value={summary.sessions.started} note={`${summary.sessions.saved} saved`} />
         <Metric label={t("dash.duration")} value={d.mean ?? "–"} note={t("dash.n", { n: d.n })} />

@@ -1,6 +1,7 @@
 """Health and configuration endpoints."""
 import copy
 import json
+import os
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
@@ -30,6 +31,12 @@ class DefaultsUpdate(BaseModel):
     defaults: dict[str, dict[str, str]]
 
 
+def _powerbi_report_url() -> str:
+    """The saved Power BI report the Dashboard opens (POWERBI_REPORT_URL in .env); only an https link is passed on."""
+    url = os.environ.get("POWERBI_REPORT_URL", "").strip()
+    return url if url.startswith("https://") else ""
+
+
 def _public(cfg: dict) -> dict:
     ai = ai_settings()
     return {"app": cfg["app"], "version": cfg["version"], "default_language": cfg["default_language"],
@@ -38,7 +45,8 @@ def _public(cfg: dict) -> dict:
             "defaults": cfg["defaults"], "field_options": cfg["field_options"], "baseline": cfg["baseline"], "provisional_meta": cfg["provisional_meta"],
             "roles": cfg["roles"], "demo_users": cfg["demo_users"], "synthetic_only": True,
             "ui": cfg.get("ui", {}), "functions": cfg["auth"]["functions"], "step_idle_cap_seconds": cfg["metrics"].get("step_idle_cap_seconds"),
-            "ai": {"provider": ai["provider"], "model": ai["model"], "mock": ai["provider"] == "mock"}}
+            "ai": {"provider": ai["provider"], "model": ai["model"], "mock": ai["provider"] == "mock"},
+            "powerbi_report_url": _powerbi_report_url()}
 
 
 @router.get("/health", tags=["health"], summary="Liveness and mode information")

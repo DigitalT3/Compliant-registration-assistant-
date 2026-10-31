@@ -82,3 +82,7 @@ A file imported this way does not refresh by itself. Export again, then upload t
 | Live data | no, a snapshot you refresh by hand |
 | Report file (`.pbix`) in the repository | no; the report is built in the browser and lives in your workspace |
 | Reaches your computer's `localhost` directly | no, the service cannot |
+
+## Open the saved report from the Dashboard
+
+Put the link of the saved report in `.env` as `POWERBI_REPORT_URL=https://app.powerbi.com/groups/me/reports/<id>`. After a restart the Dashboard's Power BI panel shows **Open report in Power BI**, which opens it in a new tab. The person must have access to the report in Power BI (share it from the report's **Share** button). The report shows the last uploaded workbook; to refresh it, download a new workbook and replace the data in Power BI.

@@ -36,7 +36,8 @@ ENV_AI = {"AI_PROVIDER", "LLM_PROVIDER", "AI_MODEL", "AI_BASE_URL", "AI_API_KEY"
           "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN", "AWS_REGION", "AWS_DEFAULT_REGION", "BEDROCK_MODEL_ID"}                # the language model
 ENV_APP = {"POC_SEED_ANCHOR", "POC_CLOCK_MODE", "POC_DEMO_MODE", "POC_ADMIN_PASSWORD", "AUTH_SECRET", "ABANDON_AFTER_MINUTES", "CORS_ORIGINS", "FRONTEND_DIST",
            "MAX_BODY_BYTES", "SERVE_FRONTEND", "API_PORT", "WEB_PORT", "PORT", "CHECK_PASSWORD", "CHECK_RATER_PASSWORD", "MOCK_AI", "TUNNEL", "ADMIN_EMAIL", "ADMIN_NAME", "CHECK_ONLY",
-           "REPORTING_TOKEN"}      # a read-only key for Power BI: it can only read the reporting tables
+           "REPORTING_TOKEN",
+           "POWERBI_REPORT_URL"}   # REPORTING_TOKEN: a read-only key for Power BI. POWERBI_REPORT_URL: the link the Dashboard opens; the app never calls it
 ALLOWED_ENV = ENV_STORE | ENV_AI | ENV_APP
 SECRET_PATTERNS = re.compile(r"AKIA[0-9A-Z]{16}|ASIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----|postgres(?:ql)?://[^\s:@/]+:[^\s@/]+@|sk-[A-Za-z0-9]{20,}|xox[abp]-[A-Za-z0-9-]{10,}")
 ROUTE_WORDS = re.compile(r"sync|push|webhook|write-?back|salesforce|integrat", re.I)
